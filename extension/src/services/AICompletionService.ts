@@ -2147,4 +2147,503 @@ Assure-toi que le JSON est valide et peut être parsé.
             };
         }
     }
+
+    // ===========================
+    // PROJECT-WIDE ANALYSIS
+    // ===========================
+
+    /**
+     * Collecte tous les fichiers de code du projet pour analyse
+     */
+    private async collectProjectFiles(maxFiles: number = 30): Promise<Array<{ path: string; content: string; language: string }>> {
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders) return [];
+
+        const codeExtensions = [
+            '.ts', '.tsx', '.js', '.jsx', '.vue', '.svelte',
+            '.py', '.java', '.go', '.rs', '.rb', '.php',
+            '.cs', '.cpp', '.c', '.h', '.hpp'
+        ];
+
+        const excludePatterns = [
+            '**/node_modules/**', '**/dist/**', '**/build/**', '**/out/**',
+            '**/.git/**', '**/coverage/**', '**/__pycache__/**',
+            '**/vendor/**', '**/*.min.js', '**/*.bundle.js',
+            '**/package-lock.json', '**/yarn.lock', '**/pnpm-lock.yaml'
+        ];
+
+        const files: Array<{ path: string; content: string; language: string }> = [];
+        
+        for (const ext of codeExtensions) {
+            if (files.length >= maxFiles) break;
+            
+            const pattern = `**/*${ext}`;
+            const foundFiles = await vscode.workspace.findFiles(pattern, `{${excludePatterns.join(',')}}`);
+            
+            for (const file of foundFiles) {
+                if (files.length >= maxFiles) break;
+                
+                try {
+                    const content = await vscode.workspace.fs.readFile(file);
+                    const text = Buffer.from(content).toString('utf8');
+                    
+                    // Skip files that are too large (> 50KB) or too small (< 100 bytes)
+                    if (text.length > 50000 || text.length < 100) continue;
+                    
+                    // Skip generated files
+                    if (text.includes('// AUTO-GENERATED') || text.includes('/* AUTO-GENERATED')) continue;
+                    
+                    const language = this.getLanguageFromExtension(ext);
+                    files.push({
+                        path: vscode.workspace.asRelativePath(file),
+                        content: text,
+                        language
+                    });
+                } catch {
+                    // Skip files that can't be read
+                }
+            }
+        }
+
+        // Sort by path to have consistent ordering
+        files.sort((a, b) => a.path.localeCompare(b.path));
+        
+        return files;
+    }
+
+    /**
+     * Détermine le langage à partir de l'extension de fichier
+     */
+    private getLanguageFromExtension(ext: string): string {
+        const langMap: Record<string, string> = {
+            '.ts': 'typescript', '.tsx': 'typescript',
+            '.js': 'javascript', '.jsx': 'javascript',
+            '.vue': 'vue', '.svelte': 'svelte',
+            '.py': 'python', '.java': 'java',
+            '.go': 'go', '.rs': 'rust',
+            '.rb': 'ruby', '.php': 'php',
+            '.cs': 'csharp', '.cpp': 'cpp', '.c': 'c',
+            '.h': 'c', '.hpp': 'cpp'
+        };
+        return langMap[ext] || 'text';
+    }
+
+    /**
+     * Génère un résumé du code pour le contexte LLM
+     */
+    private generateCodeSummary(files: Array<{ path: string; content: string; language: string }>): string {
+        const summaryParts: string[] = [];
+        
+        // Group files by directory
+        const filesByDir: Record<string, typeof files> = {};
+        for (const file of files) {
+            const dir = path.dirname(file.path);
+            if (!filesByDir[dir]) filesByDir[dir] = [];
+            filesByDir[dir].push(file);
+        }
+        
+        for (const [dir, dirFiles] of Object.entries(filesByDir)) {
+            summaryParts.push(`\n### 📁 ${dir}/`);
+            for (const file of dirFiles) {
+                // Extract key elements from the file
+                const fileName = path.basename(file.path);
+                const lineCount = file.content.split('\n').length;
+                
+                // Extract imports, exports, classes, functions
+                const imports = (file.content.match(/^import .+$/gm) || []).slice(0, 5);
+                const exports = (file.content.match(/^export (default |)(class|function|const|interface|type) \w+/gm) || []);
+                const classes = (file.content.match(/^(export )?(abstract )?class \w+/gm) || []);
+                const functions = (file.content.match(/^(export )?(async )?(function \w+|const \w+ = (\(|async \())/gm) || []).slice(0, 10);
+                
+                summaryParts.push(`\n#### ${fileName} (${lineCount} lignes, ${file.language})`);
+                
+                if (exports.length > 0) {
+                    summaryParts.push(`**Exports:** ${exports.join(', ')}`);
+                }
+                if (classes.length > 0) {
+                    summaryParts.push(`**Classes:** ${classes.join(', ')}`);
+                }
+                if (functions.length > 0) {
+                    summaryParts.push(`**Fonctions:** ${functions.slice(0, 5).join(', ')}${functions.length > 5 ? '...' : ''}`);
+                }
+                if (imports.length > 0) {
+                    summaryParts.push(`**Imports clés:** ${imports.slice(0, 3).map(i => i.replace(/^import .+ from ['"](.+)['"].*$/, '$1')).join(', ')}`);
+                }
+            }
+        }
+        
+        return summaryParts.join('\n');
+    }
+
+    /**
+     * Effectue une revue de code sur l'ensemble du projet
+     */
+    public async reviewProject(): Promise<{
+        summary: string;
+        overallScore: number;
+        fileReviews: Array<{
+            file: string;
+            score: number;
+            issues: Array<{ severity: string; message: string; suggestion?: string }>;
+        }>;
+        recommendations: string[];
+        architectureIssues: string[];
+        securityConcerns: string[];
+    }> {
+        const ollamaAvailable = await this.isOllamaAvailable();
+        if (!ollamaAvailable) {
+            throw new Error('Ollama non disponible pour la revue de projet');
+        }
+
+        const model = await this.selectLongContextModel() || await this.selectBestModel();
+        if (!model) {
+            throw new Error('Aucun modèle disponible');
+        }
+
+        // Collect project files
+        const files = await this.collectProjectFiles(25);
+        if (files.length === 0) {
+            throw new Error('Aucun fichier de code trouvé dans le projet');
+        }
+
+        // Get workspace analysis for context
+        const workspaceAnalysis = await this.workspaceAnalyzer.analyzeWorkspace();
+        
+        // Build context
+        const projectContext = workspaceAnalysis ? `
+## Contexte du Projet
+- **Nom:** ${workspaceAnalysis.name}
+- **Type:** ${workspaceAnalysis.type === 'GAME_2D' ? 'Jeu 2D' : 'Application Web/Mobile'}
+- **Stack:** ${workspaceAnalysis.specs.frontendFramework || 'N/A'} / ${workspaceAnalysis.specs.backendFramework || 'N/A'}
+- **Fichiers de code:** ${workspaceAnalysis.fileStats.codeFiles}
+- **Tests:** ${workspaceAnalysis.fileStats.testFiles} fichiers
+` : '';
+
+        // Generate code summary
+        const codeSummary = this.generateCodeSummary(files);
+        
+        // Select key files for detailed review
+        const keyFiles = files.slice(0, 10).map(f => `
+--- ${f.path} ---
+\`\`\`${f.language}
+${f.content.slice(0, 3000)}${f.content.length > 3000 ? '\n// ... (tronqué)' : ''}
+\`\`\`
+`).join('\n');
+
+        const prompt = `Tu es un Lead Developer Senior effectuant une revue de code complète d'un projet.
+
+${projectContext}
+
+## Structure du Projet (${files.length} fichiers analysés)
+${codeSummary}
+
+## Code Source Clé
+${keyFiles}
+
+---
+
+Effectue une revue de code exhaustive et réponds avec un JSON valide:
+
+\`\`\`json
+{
+  "summary": "Résumé exécutif de la qualité du code en 3-4 phrases",
+  "overallScore": 75,
+  "fileReviews": [
+    {
+      "file": "src/example.ts",
+      "score": 80,
+      "issues": [
+        {"severity": "warning", "message": "Description du problème", "suggestion": "Comment corriger"}
+      ]
+    }
+  ],
+  "recommendations": [
+    "Amélioration globale 1",
+    "Amélioration globale 2"
+  ],
+  "architectureIssues": [
+    "Problème d'architecture détecté"
+  ],
+  "securityConcerns": [
+    "Point de sécurité à vérifier"
+  ]
+}
+\`\`\`
+
+**Critères d'évaluation:**
+- Structure et organisation du code
+- Patterns et bonnes pratiques
+- Gestion des erreurs
+- Séparation des responsabilités
+- Duplication de code
+- Complexité cyclomatique
+- Sécurité (injections, XSS, etc.)
+- Performance potentielle
+- Testabilité
+
+Score: 0-40 = Critique, 41-60 = Amélioration nécessaire, 61-80 = Bon, 81-100 = Excellent`;
+
+        try {
+            const response = await this.generateWithOllama(prompt, model, { temperature: 0.3, num_predict: 5000 });
+            
+            let cleanResponse = response.trim();
+            if (cleanResponse.startsWith('```json')) cleanResponse = cleanResponse.slice(7);
+            else if (cleanResponse.startsWith('```')) cleanResponse = cleanResponse.slice(3);
+            if (cleanResponse.endsWith('```')) cleanResponse = cleanResponse.slice(0, -3);
+            
+            return JSON.parse(cleanResponse.trim());
+        } catch (error) {
+            console.error('[AICompletionService] Project review failed:', error);
+            return {
+                summary: 'Erreur lors de l\'analyse du projet',
+                overallScore: 0,
+                fileReviews: [],
+                recommendations: [],
+                architectureIssues: [],
+                securityConcerns: []
+            };
+        }
+    }
+
+    /**
+     * Génère une explication de l'architecture et de la structure du projet
+     */
+    public async explainProject(): Promise<{
+        overview: string;
+        architecture: string;
+        components: Array<{ name: string; purpose: string; dependencies: string[] }>;
+        dataFlow: string;
+        entryPoints: string[];
+        keyPatterns: string[];
+        suggestions: string[];
+    }> {
+        const ollamaAvailable = await this.isOllamaAvailable();
+        if (!ollamaAvailable) {
+            throw new Error('Ollama non disponible');
+        }
+
+        const model = await this.selectLongContextModel() || await this.selectBestModel();
+        if (!model) {
+            throw new Error('Aucun modèle disponible');
+        }
+
+        const files = await this.collectProjectFiles(30);
+        if (files.length === 0) {
+            throw new Error('Aucun fichier de code trouvé');
+        }
+
+        const workspaceAnalysis = await this.workspaceAnalyzer.analyzeWorkspace();
+        const codeSummary = this.generateCodeSummary(files);
+        
+        // Include more detailed code for architecture understanding
+        const keyFiles = files.slice(0, 8).map(f => `
+--- ${f.path} ---
+\`\`\`${f.language}
+${f.content.slice(0, 4000)}${f.content.length > 4000 ? '\n// ... (tronqué)' : ''}
+\`\`\`
+`).join('\n');
+
+        const projectInfo = workspaceAnalysis ? `
+## Informations Projet
+- **Nom:** ${workspaceAnalysis.name}
+- **Type:** ${workspaceAnalysis.type}
+- **Frontend:** ${workspaceAnalysis.specs.frontendFramework || 'Non détecté'}
+- **Backend:** ${workspaceAnalysis.specs.backendFramework || 'Non détecté'}
+- **Dépendances:** ${workspaceAnalysis.dependencies.slice(0, 15).join(', ')}
+` : '';
+
+        const prompt = `Tu es un Architecte Logiciel Senior. Analyse ce projet et explique son architecture de manière claire et pédagogique.
+
+${projectInfo}
+
+## Structure du Projet
+${codeSummary}
+
+## Code Source
+${keyFiles}
+
+---
+
+Génère une explication détaillée au format JSON:
+
+\`\`\`json
+{
+  "overview": "Description générale du projet en 2-3 phrases: objectif, technologies utilisées, complexité",
+  "architecture": "Explication détaillée de l'architecture: patterns utilisés, couches, organisation. Minimum 4-5 phrases.",
+  "components": [
+    {
+      "name": "Nom du composant/module",
+      "purpose": "Rôle et responsabilité de ce composant",
+      "dependencies": ["composant1", "composant2"]
+    }
+  ],
+  "dataFlow": "Explication du flux de données: comment les données circulent dans l'application, de l'entrée à la sortie",
+  "entryPoints": ["Point d'entrée principal", "Autre point d'entrée"],
+  "keyPatterns": ["Pattern utilisé 1", "Pattern utilisé 2"],
+  "suggestions": ["Suggestion d'amélioration architecturale 1", "Suggestion 2"]
+}
+\`\`\`
+
+Sois précis, pédagogique et actionnable. Identifie les patterns de conception utilisés.`;
+
+        try {
+            const response = await this.generateWithOllama(prompt, model, { temperature: 0.4, num_predict: 5000 });
+            
+            let cleanResponse = response.trim();
+            if (cleanResponse.startsWith('```json')) cleanResponse = cleanResponse.slice(7);
+            else if (cleanResponse.startsWith('```')) cleanResponse = cleanResponse.slice(3);
+            if (cleanResponse.endsWith('```')) cleanResponse = cleanResponse.slice(0, -3);
+            
+            return JSON.parse(cleanResponse.trim());
+        } catch (error) {
+            console.error('[AICompletionService] Project explanation failed:', error);
+            return {
+                overview: 'Erreur lors de l\'analyse',
+                architecture: '',
+                components: [],
+                dataFlow: '',
+                entryPoints: [],
+                keyPatterns: [],
+                suggestions: []
+            };
+        }
+    }
+
+    /**
+     * Effectue un audit de sécurité complet du projet
+     */
+    public async securityAuditProject(): Promise<{
+        summary: string;
+        riskLevel: 'critical' | 'high' | 'medium' | 'low';
+        score: number;
+        vulnerabilities: Array<{
+            severity: 'critical' | 'high' | 'medium' | 'low';
+            type: string;
+            file: string;
+            description: string;
+            recommendation: string;
+        }>;
+        bestPractices: Array<{ practice: string; status: 'implemented' | 'missing' | 'partial' }>;
+        recommendations: string[];
+    }> {
+        const ollamaAvailable = await this.isOllamaAvailable();
+        if (!ollamaAvailable) {
+            throw new Error('Ollama non disponible');
+        }
+
+        const model = await this.selectLongContextModel() || await this.selectBestModel();
+        if (!model) {
+            throw new Error('Aucun modèle disponible');
+        }
+
+        const files = await this.collectProjectFiles(25);
+        if (files.length === 0) {
+            throw new Error('Aucun fichier de code trouvé');
+        }
+
+        const workspaceAnalysis = await this.workspaceAnalyzer.analyzeWorkspace();
+        
+        // Focus on security-relevant files
+        const securityRelevantFiles = files.filter(f => 
+            f.path.includes('auth') || f.path.includes('login') || f.path.includes('api') ||
+            f.path.includes('middleware') || f.path.includes('security') ||
+            f.path.includes('config') || f.path.includes('env') ||
+            f.content.includes('password') || f.content.includes('token') ||
+            f.content.includes('secret') || f.content.includes('key') ||
+            f.content.includes('database') || f.content.includes('sql') ||
+            f.content.includes('exec') || f.content.includes('eval')
+        );
+        
+        const filesToAnalyze = securityRelevantFiles.length > 0 ? securityRelevantFiles : files.slice(0, 15);
+        
+        const codeForAnalysis = filesToAnalyze.map(f => `
+--- ${f.path} ---
+\`\`\`${f.language}
+${f.content.slice(0, 4000)}${f.content.length > 4000 ? '\n// ... (tronqué)' : ''}
+\`\`\`
+`).join('\n');
+
+        const projectContext = workspaceAnalysis ? `
+## Contexte Projet
+- **Type:** ${workspaceAnalysis.type}
+- **Stack:** ${workspaceAnalysis.specs.frontendFramework || 'N/A'} / ${workspaceAnalysis.specs.backendFramework || 'N/A'}
+- **Dépendances de sécurité:** ${workspaceAnalysis.dependencies.filter(d => 
+    /auth|jwt|bcrypt|crypto|helmet|cors|sanitize|validator|passport/.test(d)
+).join(', ') || 'Aucune détectée'}
+` : '';
+
+        const prompt = `Tu es un Expert en Sécurité Applicative (OWASP). Effectue un audit de sécurité complet de ce projet.
+
+${projectContext}
+
+## Code Source à Analyser
+${codeForAnalysis}
+
+---
+
+Effectue un audit de sécurité exhaustif et réponds avec un JSON valide:
+
+\`\`\`json
+{
+  "summary": "Résumé de l'état de sécurité du projet en 3-4 phrases",
+  "riskLevel": "critical|high|medium|low",
+  "score": 75,
+  "vulnerabilities": [
+    {
+      "severity": "critical|high|medium|low",
+      "type": "Type OWASP (ex: Injection, XSS, CSRF, etc.)",
+      "file": "chemin/du/fichier.ts",
+      "description": "Description détaillée de la vulnérabilité",
+      "recommendation": "Comment corriger cette vulnérabilité"
+    }
+  ],
+  "bestPractices": [
+    {"practice": "Validation des entrées", "status": "implemented|missing|partial"},
+    {"practice": "Authentification sécurisée", "status": "implemented|missing|partial"},
+    {"practice": "Encryption des données sensibles", "status": "implemented|missing|partial"},
+    {"practice": "Protection CSRF", "status": "implemented|missing|partial"},
+    {"practice": "Headers de sécurité", "status": "implemented|missing|partial"}
+  ],
+  "recommendations": [
+    "Recommandation prioritaire 1",
+    "Recommandation prioritaire 2"
+  ]
+}
+\`\`\`
+
+**Vulnérabilités OWASP à rechercher:**
+- A01: Broken Access Control
+- A02: Cryptographic Failures  
+- A03: Injection (SQL, NoSQL, Command, LDAP)
+- A04: Insecure Design
+- A05: Security Misconfiguration
+- A06: Vulnerable Components
+- A07: Authentication Failures
+- A08: Data Integrity Failures
+- A09: Security Logging Failures
+- A10: SSRF
+
+Score: 0-40 = Critique, 41-60 = Risqué, 61-80 = Acceptable, 81-100 = Sécurisé`;
+
+        try {
+            const response = await this.generateWithOllama(prompt, model, { temperature: 0.2, num_predict: 5000 });
+            
+            let cleanResponse = response.trim();
+            if (cleanResponse.startsWith('```json')) cleanResponse = cleanResponse.slice(7);
+            else if (cleanResponse.startsWith('```')) cleanResponse = cleanResponse.slice(3);
+            if (cleanResponse.endsWith('```')) cleanResponse = cleanResponse.slice(0, -3);
+            
+            return JSON.parse(cleanResponse.trim());
+        } catch (error) {
+            console.error('[AICompletionService] Security audit failed:', error);
+            return {
+                summary: 'Erreur lors de l\'audit de sécurité',
+                riskLevel: 'high',
+                score: 0,
+                vulnerabilities: [],
+                bestPractices: [],
+                recommendations: []
+            };
+        }
+    }
 }

@@ -193,13 +193,28 @@
       },
       {
         "command": "devarchitect.detectSecurityIssues",
-        "title": "DevArchitect: Analyse de sécurité (IA Mistral)",
+        "title": "DevArchitect: Analyse de sécurité - Fichier (IA Mistral)",
         "icon": "$(shield)"
       },
       {
         "command": "devarchitect.aiComplete",
         "title": "DevArchitect: Compléter le projet avec l'IA",
         "icon": "$(sparkle)"
+      },
+      {
+        "command": "devarchitect.reviewProject",
+        "title": "DevArchitect: Revue de code - Projet complet (IA Mistral)",
+        "icon": "$(search-view-icon)"
+      },
+      {
+        "command": "devarchitect.explainProject",
+        "title": "DevArchitect: Expliquer l'architecture du projet (IA Mistral)",
+        "icon": "$(type-hierarchy)"
+      },
+      {
+        "command": "devarchitect.securityAuditProject",
+        "title": "DevArchitect: Audit de sécurité - Projet complet (IA Mistral)",
+        "icon": "$(verified-filled)"
       }
     ],
     "viewsContainers": {

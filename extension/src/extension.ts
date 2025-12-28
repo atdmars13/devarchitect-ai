@@ -711,6 +711,309 @@ ${sortedIssues.length > 0 ? sortedIssues.map((issue: any, i: number) => {
             }
         })
     );
+
+    // ============================================
+    // COMMANDES ANALYSE PROJET COMPLET
+    // ============================================
+
+    // Command: Review entire project
+    context.subscriptions.push(
+        vscode.commands.registerCommand('devarchitect.reviewProject', async () => {
+            try {
+                const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+                if (!workspaceFolder) {
+                    void vscode.window.showWarningMessage('⚠️ Aucun workspace ouvert.');
+                    return null;
+                }
+
+                void vscode.window.showInformationMessage('🔍 Revue de code du projet en cours... (peut prendre quelques minutes)');
+                
+                const result = await aiService.reviewProject();
+                
+                // Generate comprehensive report
+                const scoreEmoji = result.overallScore >= 80 ? '🟢' : result.overallScore >= 60 ? '🟡' : '🔴';
+                
+                const fileReviewsSection = result.fileReviews?.length > 0 
+                    ? result.fileReviews.map((fr: any) => {
+                        const fEmoji = fr.score >= 80 ? '🟢' : fr.score >= 60 ? '🟡' : '🔴';
+                        let content = `### ${fEmoji} ${fr.file} - Score: ${fr.score}/100\n\n`;
+                        if (fr.issues?.length > 0) {
+                            content += fr.issues.map((issue: any) => 
+                                `- **${issue.severity === 'critical' ? '🔴' : issue.severity === 'warning' ? '🟡' : '🔵'}** ${issue.message}\n  ${issue.suggestion ? `  💡 ${issue.suggestion}` : ''}`
+                            ).join('\n');
+                        } else {
+                            content += '✅ Aucun problème détecté';
+                        }
+                        return content;
+                    }).join('\n\n')
+                    : 'Aucun fichier analysé en détail.';
+
+                const report = `# 🔍 Revue de Code - Projet Complet
+
+**Date:** ${new Date().toLocaleString('fr-FR')}
+**Workspace:** \`${workspaceFolder.name}\`
+
+---
+
+## ${scoreEmoji} Score Global: ${result.overallScore}/100
+
+---
+
+## 📝 Résumé Exécutif
+
+${result.summary || 'Analyse non disponible.'}
+
+---
+
+## 📊 Revue par Fichier
+
+${fileReviewsSection}
+
+---
+
+## 🏗️ Problèmes d'Architecture
+
+${result.architectureIssues?.length > 0 
+    ? result.architectureIssues.map((issue: string) => `- ⚠️ ${issue}`).join('\n')
+    : '✅ Aucun problème d\'architecture majeur détecté.'}
+
+---
+
+## 🔐 Points de Sécurité
+
+${result.securityConcerns?.length > 0 
+    ? result.securityConcerns.map((concern: string) => `- 🔒 ${concern}`).join('\n')
+    : '✅ Aucun problème de sécurité identifié.'}
+
+---
+
+## 💡 Recommandations Prioritaires
+
+${result.recommendations?.length > 0 
+    ? result.recommendations.map((rec: string, i: number) => `${i + 1}. ${rec}`).join('\n')
+    : 'Aucune recommandation spécifique.'}
+
+---
+
+*Généré par DevArchitect AI avec Mistral - Analyse complète du projet*
+`;
+                
+                await createAndOpenReport('review-projet', report);
+                void vscode.window.showInformationMessage(`✅ Revue de projet terminée - Score: ${result.overallScore}/100`);
+                return result;
+            } catch (error) {
+                void vscode.window.showErrorMessage(`❌ Erreur: ${error instanceof Error ? error.message : String(error)}`);
+                return null;
+            }
+        })
+    );
+
+    // Command: Explain project architecture
+    context.subscriptions.push(
+        vscode.commands.registerCommand('devarchitect.explainProject', async () => {
+            try {
+                const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+                if (!workspaceFolder) {
+                    void vscode.window.showWarningMessage('⚠️ Aucun workspace ouvert.');
+                    return null;
+                }
+
+                void vscode.window.showInformationMessage('📖 Analyse de l\'architecture en cours...');
+                
+                const result = await aiService.explainProject();
+                
+                const componentsSection = result.components?.length > 0
+                    ? result.components.map((c: any) => 
+                        `### 📦 ${c.name}\n\n**Rôle:** ${c.purpose}\n\n**Dépendances:** ${c.dependencies?.join(', ') || 'Aucune'}`
+                    ).join('\n\n---\n\n')
+                    : 'Aucun composant identifié.';
+
+                const report = `# 📖 Architecture du Projet - ${workspaceFolder.name}
+
+**Date:** ${new Date().toLocaleString('fr-FR')}
+
+---
+
+## 🎯 Vue d'ensemble
+
+${result.overview || 'Vue d\'ensemble non disponible.'}
+
+---
+
+## 🏗️ Architecture
+
+${result.architecture || 'Architecture non analysée.'}
+
+---
+
+## 📦 Composants Principaux
+
+${componentsSection}
+
+---
+
+## 🔄 Flux de Données
+
+${result.dataFlow || 'Flux de données non analysé.'}
+
+---
+
+## 🚀 Points d'Entrée
+
+${result.entryPoints?.length > 0 
+    ? result.entryPoints.map((ep: string) => `- \`${ep}\``).join('\n')
+    : '- Point d\'entrée principal non identifié'}
+
+---
+
+## 🎨 Patterns de Conception Utilisés
+
+${result.keyPatterns?.length > 0 
+    ? result.keyPatterns.map((p: string) => `- ✨ ${p}`).join('\n')
+    : 'Aucun pattern spécifique identifié.'}
+
+---
+
+## 💡 Suggestions d'Amélioration
+
+${result.suggestions?.length > 0 
+    ? result.suggestions.map((s: string, i: number) => `${i + 1}. ${s}`).join('\n')
+    : 'Aucune suggestion spécifique.'}
+
+---
+
+*Généré par DevArchitect AI avec Mistral*
+`;
+                
+                await createAndOpenReport('architecture-projet', report);
+                void vscode.window.showInformationMessage('✅ Explication de l\'architecture générée');
+                return result;
+            } catch (error) {
+                void vscode.window.showErrorMessage(`❌ Erreur: ${error instanceof Error ? error.message : String(error)}`);
+                return null;
+            }
+        })
+    );
+
+    // Command: Security audit entire project
+    context.subscriptions.push(
+        vscode.commands.registerCommand('devarchitect.securityAuditProject', async () => {
+            try {
+                const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+                if (!workspaceFolder) {
+                    void vscode.window.showWarningMessage('⚠️ Aucun workspace ouvert.');
+                    return null;
+                }
+
+                void vscode.window.showInformationMessage('🔐 Audit de sécurité du projet en cours...');
+                
+                const result = await aiService.securityAuditProject();
+                
+                const riskEmoji = result.riskLevel === 'critical' ? '🔴' 
+                    : result.riskLevel === 'high' ? '🟠' 
+                    : result.riskLevel === 'medium' ? '🟡' 
+                    : '🟢';
+                
+                const vulnsSection = result.vulnerabilities?.length > 0
+                    ? result.vulnerabilities.map((v: any, i: number) => {
+                        const sevEmoji = v.severity === 'critical' ? '🔴' : v.severity === 'high' ? '🟠' : v.severity === 'medium' ? '🟡' : '🔵';
+                        return `### ${i + 1}. ${sevEmoji} ${v.type}
+
+**Sévérité:** ${v.severity}
+**Fichier:** \`${v.file}\`
+
+${v.description}
+
+**💡 Recommandation:** ${v.recommendation}`;
+                    }).join('\n\n---\n\n')
+                    : '✅ **Aucune vulnérabilité détectée !**';
+
+                const practicesSection = result.bestPractices?.length > 0
+                    ? result.bestPractices.map((bp: any) => {
+                        const statusEmoji = bp.status === 'implemented' ? '✅' : bp.status === 'partial' ? '🟡' : '❌';
+                        return `| ${bp.practice} | ${statusEmoji} ${bp.status} |`;
+                    }).join('\n')
+                    : '| Aucune pratique analysée | - |';
+
+                const criticalCount = result.vulnerabilities?.filter((v: any) => v.severity === 'critical' || v.severity === 'high').length || 0;
+
+                const report = `# 🔐 Audit de Sécurité - ${workspaceFolder.name}
+
+**Date:** ${new Date().toLocaleString('fr-FR')}
+
+---
+
+## ${riskEmoji} Niveau de Risque: ${result.riskLevel?.toUpperCase()} - Score: ${result.score}/100
+
+---
+
+## 📝 Résumé
+
+${result.summary || 'Résumé non disponible.'}
+
+---
+
+## 📊 Statistiques
+
+| Catégorie | Nombre |
+|-----------|--------|
+| 🔴 Vulnérabilités Critiques/Hautes | ${criticalCount} |
+| 🟡 Vulnérabilités Moyennes | ${result.vulnerabilities?.filter((v: any) => v.severity === 'medium').length || 0} |
+| 🔵 Vulnérabilités Basses | ${result.vulnerabilities?.filter((v: any) => v.severity === 'low').length || 0} |
+| **Total** | **${result.vulnerabilities?.length || 0}** |
+
+---
+
+## 🚨 Vulnérabilités Détectées
+
+${vulnsSection}
+
+---
+
+## ✅ Bonnes Pratiques de Sécurité
+
+| Pratique | Statut |
+|----------|--------|
+${practicesSection}
+
+---
+
+## 💡 Recommandations Prioritaires
+
+${result.recommendations?.length > 0 
+    ? result.recommendations.map((rec: string, i: number) => `${i + 1}. **${rec}**`).join('\n')
+    : 'Aucune recommandation spécifique.'}
+
+---
+
+## 📚 Ressources OWASP
+
+- [OWASP Top 10 2021](https://owasp.org/www-project-top-ten/)
+- [OWASP Cheat Sheet Series](https://cheatsheetseries.owasp.org/)
+- [OWASP Testing Guide](https://owasp.org/www-project-web-security-testing-guide/)
+
+---
+
+*Généré par DevArchitect AI avec Mistral - Audit de sécurité complet*
+`;
+                
+                await createAndOpenReport('securite-projet', report);
+                
+                if (result.vulnerabilities?.length === 0) {
+                    void vscode.window.showInformationMessage('✅ Audit terminé - Aucune vulnérabilité détectée');
+                } else {
+                    const msg = criticalCount > 0 
+                        ? `🔴 ${criticalCount} vulnérabilité(s) critique(s) détectée(s)` 
+                        : `⚠️ ${result.vulnerabilities?.length} problème(s) de sécurité détecté(s)`;
+                    void vscode.window.showWarningMessage(msg);
+                }
+                return result;
+            } catch (error) {
+                void vscode.window.showErrorMessage(`❌ Erreur: ${error instanceof Error ? error.message : String(error)}`);
+                return null;
+            }
+        })
+    );
 }
 
 export function deactivate() {
