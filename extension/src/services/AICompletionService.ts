@@ -1018,83 +1018,220 @@ Si aucune vulnérabilité, retourne un tableau vide: []`;
         
         // === Section 1: Informations du Workspace ===
         if (analysis) {
-            sections.push(`## ANALYSE DU WORKSPACE
+            // Construire une analyse détaillée des dépendances avec catégories
+            const depCategories = this.categorizeDependencies(analysis.dependencies);
+            const devDepCategories = this.categorizeDependencies(analysis.devDependencies);
+            
+            sections.push(`## 📊 ANALYSE APPROFONDIE DU WORKSPACE
 
-### Projet détecté
-- **Nom**: ${analysis.name}
-- **Type**: ${analysis.type === 'GAME_2D' ? 'Jeu vidéo 2D' : 'Application Web/Mobile'}
-- **Description README**: ${analysis.concept || 'Non disponible'}
+### 🏷️ Identité du Projet
+- **Nom du projet**: ${analysis.name}
+- **Type détecté**: ${analysis.type === 'GAME_2D' ? '🎮 Jeu vidéo 2D' : '🌐 Application Web/Mobile'}
+- **Description extraite du README**: ${analysis.concept || 'Non disponible - à définir'}
 
-### Stack Technique
-- Framework Frontend: ${analysis.specs.frontendFramework || 'Non détecté'}
-- Framework Backend: ${analysis.specs.backendFramework || 'Non détecté'}
-- Moteur de jeu: ${analysis.specs.gameEngine || 'N/A'}
+### 🛠️ Stack Technique Détaillée
+**Frontend:**
+- Framework principal: ${analysis.specs.frontendFramework || 'Non détecté'}
+- Bibliothèques UI: ${depCategories.ui.join(', ') || 'Aucune'}
+- State Management: ${depCategories.stateManagement.join(', ') || 'Non détecté'}
+- Styling: ${analysis.detectedFiles.hasTailwind ? 'Tailwind CSS' : depCategories.styling.join(', ') || 'CSS standard'}
+
+**Backend:**
+- Framework: ${analysis.specs.backendFramework || 'Non détecté'}
+- ORM/Database: ${analysis.detectedFiles.hasPrisma ? 'Prisma' : depCategories.database.join(', ') || 'Non détecté'}
+- API: ${analysis.detectedFiles.hasGraphQL ? 'GraphQL' : depCategories.api.join(', ') || 'REST probable'}
+- Auth: ${depCategories.auth.join(', ') || 'Non détecté'}
+
+**Jeu (si applicable):**
+- Moteur: ${analysis.specs.gameEngine || 'Non détecté'}
+- Rendu: ${depCategories.gameEngine.join(', ') || 'N/A'}
+
+**Infrastructure:**
 - Cible de déploiement: ${analysis.specs.deploymentTarget || 'Non configurée'}
-- PWA: ${analysis.specs.pwaSupport ? 'Oui' : 'Non'}
+- PWA: ${analysis.specs.pwaSupport ? '✅ Oui' : '❌ Non'}
+- Docker: ${analysis.detectedFiles.hasDockerfile ? '✅ Configuré' : '❌ Non'}
+- CI/CD: ${analysis.detectedFiles.hasCICD ? '✅ Configuré' : '❌ Non'}
 
-### Dépendances (${analysis.dependencies.length} prod + ${analysis.devDependencies.length} dev)
-Production: ${analysis.dependencies.slice(0, 15).join(', ')}${analysis.dependencies.length > 15 ? '...' : ''}
-Dev: ${analysis.devDependencies.slice(0, 10).join(', ')}${analysis.devDependencies.length > 10 ? '...' : ''}
+### 📦 Dépendances Analysées
 
-### Statistiques du Code
-- Fichiers totaux: ${analysis.fileStats.totalFiles}
-- Fichiers de code: ${analysis.fileStats.codeFiles}
-- Fichiers de test: ${analysis.fileStats.testFiles}
-- Composants: ${analysis.fileStats.componentFiles}
-- Couverture estimée: ${analysis.fileStats.testFiles > 0 ? Math.round((analysis.fileStats.testFiles / Math.max(1, analysis.fileStats.codeFiles)) * 100) : 0}%
+**Production (${analysis.dependencies.length} packages):**
+${this.formatDependencyList(analysis.dependencies, depCategories)}
 
-### Fichiers de Configuration Détectés
-- package.json: ${analysis.detectedFiles.hasPackageJson ? '✓' : '✗'}
-- TypeScript: ${analysis.detectedFiles.hasTsConfig ? '✓' : '✗'}
-- Docker: ${analysis.detectedFiles.hasDockerfile ? '✓' : '✗'}
-- Prisma/ORM: ${analysis.detectedFiles.hasPrisma ? '✓' : '✗'}
-- GraphQL: ${analysis.detectedFiles.hasGraphQL ? '✓' : '✗'}
-- Tailwind: ${analysis.detectedFiles.hasTailwind ? '✓' : '✗'}
-- Tests: ${analysis.detectedFiles.hasTests ? '✓' : '✗'}
-- CI/CD: ${analysis.detectedFiles.hasCICD ? '✓' : '✗'}
+**Développement (${analysis.devDependencies.length} packages):**
+- Testing: ${devDepCategories.testing.join(', ') || 'Non configuré'}
+- Linting: ${devDepCategories.linting.join(', ') || 'Non configuré'}
+- Build: ${devDepCategories.build.join(', ') || 'Non configuré'}
 
-### Features Principales Détectées
-${analysis.coreFeatures?.length > 0 ? analysis.coreFeatures.map(f => `- ${f}`).join('\n') : '- Aucune feature spécifique détectée'}
+### 📈 Métriques du Code Source
+| Catégorie | Nombre | Détails |
+|-----------|--------|---------|
+| Fichiers totaux | ${analysis.fileStats.totalFiles} | Tous fichiers confondus |
+| Fichiers de code | ${analysis.fileStats.codeFiles} | .ts, .tsx, .js, .jsx, etc. |
+| Fichiers de test | ${analysis.fileStats.testFiles} | .test., .spec. |
+| Composants UI | ${analysis.fileStats.componentFiles} | React/Vue/Svelte components |
+| Couverture estimée | ${analysis.fileStats.testFiles > 0 ? Math.round((analysis.fileStats.testFiles / Math.max(1, analysis.fileStats.codeFiles)) * 100) : 0}% | Ratio tests/code |
 
-### Assets Détectés (${analysis.assets?.length || 0} fichiers)
-${analysis.assets?.slice(0, 10).map(a => `- ${a.category}: ${a.name}`).join('\n') || 'Aucun asset détecté'}
+### ✅ Configuration Détectée
+| Fichier | Présent | Implication |
+|---------|---------|-------------|
+| package.json | ${analysis.detectedFiles.hasPackageJson ? '✅' : '❌'} | Projet Node.js |
+| tsconfig.json | ${analysis.detectedFiles.hasTsConfig ? '✅' : '❌'} | TypeScript activé |
+| Dockerfile | ${analysis.detectedFiles.hasDockerfile ? '✅' : '❌'} | Containerisation prête |
+| prisma/schema | ${analysis.detectedFiles.hasPrisma ? '✅' : '❌'} | ORM Prisma configuré |
+| GraphQL schema | ${analysis.detectedFiles.hasGraphQL ? '✅' : '❌'} | API GraphQL |
+| tailwind.config | ${analysis.detectedFiles.hasTailwind ? '✅' : '❌'} | Tailwind CSS |
+| Tests config | ${analysis.detectedFiles.hasTests ? '✅' : '❌'} | Tests unitaires |
+| CI/CD config | ${analysis.detectedFiles.hasCICD ? '✅' : '❌'} | Intégration continue |
 
-### Variables d'Environnement (${analysis.variables?.length || 0})
-${analysis.variables?.slice(0, 8).map(v => `- ${v.key}: ${v.description || '(valeur masquée)'}`).join('\n') || 'Aucune variable détectée'}`);
+### 🎯 Fonctionnalités Principales Identifiées
+${analysis.coreFeatures?.length > 0 ? analysis.coreFeatures.map((f, i) => `${i + 1}. ${f}`).join('\n') : '⚠️ Aucune feature spécifique détectée - à définir manuellement'}
+
+### 🖼️ Assets Détectés (${analysis.assets?.length || 0})
+${analysis.assets?.length > 0 ? analysis.assets.slice(0, 15).map(a => `- [${a.category}] ${a.name}${a.path ? ` → ${a.path}` : ''}`).join('\n') : '⚠️ Aucun asset détecté'}
+
+### 🔐 Variables d'Environnement (${analysis.variables?.length || 0})
+${analysis.variables?.length > 0 ? analysis.variables.slice(0, 10).map(v => `- \`${v.key}\`: ${v.description || 'Configuration requise'}`).join('\n') : '⚠️ Aucune variable détectée'}`);
         } else {
-            sections.push(`## WORKSPACE
-Aucun workspace ouvert ou analyse impossible.`);
+            sections.push(`## ⚠️ WORKSPACE
+Aucun workspace ouvert ou analyse impossible. Génération basée sur les informations projet uniquement.`);
         }
         
         // === Section 2: Données du Projet Existant ===
         if (currentProject) {
             const roadmapSummary = currentProject.roadmap?.length > 0
-                ? currentProject.roadmap.map((p: any) => `- ${p.title} (${p.status}, ${p.progress}%)`).join('\n')
-                : 'Aucune phase définie';
+                ? currentProject.roadmap.map((p: any, i: number) => 
+                    `${i + 1}. **${p.title}** - ${p.status} (${p.progress}%) ${p.priority ? `[${p.priority}]` : ''}\n   ${p.description || 'Pas de description'}`
+                ).join('\n')
+                : '⚠️ Aucune phase définie - roadmap à créer';
             
-            sections.push(`## DONNÉES DU PROJET EXISTANT
+            // Calculer les statistiques du projet
+            const totalProgress = currentProject.roadmap?.length > 0 
+                ? Math.round(currentProject.roadmap.reduce((acc: number, p: any) => acc + (p.progress || 0), 0) / currentProject.roadmap.length)
+                : 0;
+            
+            const phasesByStatus = currentProject.roadmap?.reduce((acc: Record<string, number>, p: any) => {
+                acc[p.status] = (acc[p.status] || 0) + 1;
+                return acc;
+            }, {}) || {};
+            
+            sections.push(`## 📋 ÉTAT ACTUEL DU PROJET
 
-### Informations Générales
-- Nom: ${currentProject.name || 'Non défini'}
-- Type: ${currentProject.type || 'Non défini'}
-- Concept: ${currentProject.concept || 'Non défini'}
-- Public cible: ${currentProject.targetAudience || 'Non défini'}
-- Elevator Pitch: ${currentProject.elevatorPitch || 'Non défini'}
+### 🏷️ Informations Générales
+| Champ | Valeur | Status |
+|-------|--------|--------|
+| Nom | ${currentProject.name || '❌ Non défini'} | ${currentProject.name ? '✅' : '⚠️ À compléter'} |
+| Type | ${currentProject.type || '❌ Non défini'} | ${currentProject.type ? '✅' : '⚠️ À définir'} |
+| Concept | ${currentProject.concept ? currentProject.concept.substring(0, 100) + '...' : '❌ Non défini'} | ${currentProject.concept ? '✅' : '⚠️ À compléter'} |
+| Public cible | ${currentProject.targetAudience || '❌ Non défini'} | ${currentProject.targetAudience ? '✅' : '⚠️ À définir'} |
+| Elevator Pitch | ${currentProject.elevatorPitch || '❌ Non défini'} | ${currentProject.elevatorPitch ? '✅' : '⚠️ À compléter'} |
+| Architecture | ${currentProject.architecture ? 'Définie' : '❌ Non définie'} | ${currentProject.architecture ? '✅' : '⚠️ À documenter'} |
+| Critères de validation | ${currentProject.validationCriteria ? 'Définis' : '❌ Non définis'} | ${currentProject.validationCriteria ? '✅' : '⚠️ À définir'} |
 
-### Roadmap (${currentProject.roadmap?.length || 0} phases)
+### 📊 Progression du Projet
+- **Avancement global**: ${totalProgress}%
+- Phases backlog: ${phasesByStatus['backlog'] || 0}
+- Phases todo: ${phasesByStatus['todo'] || 0}
+- Phases en cours: ${phasesByStatus['doing'] || 0}
+- Phases en review: ${phasesByStatus['review'] || 0}
+- Phases terminées: ${phasesByStatus['done'] || 0}
+
+### 🗺️ Roadmap Actuelle (${currentProject.roadmap?.length || 0} phases)
 ${roadmapSummary}
 
-### Ressources
-- Assets: ${currentProject.assets?.length || 0}
-- Commandes: ${currentProject.commands?.length || 0}
-- Variables: ${currentProject.variables?.length || 0}
-- FAQs: ${currentProject.faqs?.length || 0}`);
+### 📦 Ressources du Projet
+- 🖼️ Assets: ${currentProject.assets?.length || 0} fichiers
+- ⌨️ Commandes: ${currentProject.commands?.length || 0} scripts
+- 🔐 Variables: ${currentProject.variables?.length || 0} configs
+- ❓ FAQs: ${currentProject.faqs?.length || 0} entrées
+- 🧪 Cas de test: ${currentProject.testCases?.length || 0} scénarios
+
+### 🎯 Features Principales Déclarées
+${currentProject.coreFeatures?.length > 0 ? currentProject.coreFeatures.map((f: string, i: number) => `${i + 1}. ${f}`).join('\n') : '⚠️ Aucune feature déclarée'}`);
         } else {
-            sections.push(`## PROJET EXISTANT
-Aucun projet actif.`);
+            sections.push(`## 📋 PROJET
+Aucun projet actif. Création d'un nouveau projet.`);
         }
         
         return sections.join('\n\n---\n\n');
+    }
+    
+    /**
+     * Catégorise les dépendances par type pour une meilleure analyse
+     */
+    private categorizeDependencies(deps: string[]): Record<string, string[]> {
+        const categories: Record<string, string[]> = {
+            ui: [],
+            stateManagement: [],
+            styling: [],
+            database: [],
+            api: [],
+            auth: [],
+            gameEngine: [],
+            testing: [],
+            linting: [],
+            build: [],
+            utils: []
+        };
+        
+        const patterns: Record<string, RegExp> = {
+            ui: /^(react|vue|svelte|angular|next|nuxt|remix|gatsby|solid|preact|@mui|@chakra|antd|@headless|radix|shadcn)/i,
+            stateManagement: /^(redux|zustand|jotai|recoil|mobx|pinia|vuex|xstate|valtio)/i,
+            styling: /^(styled-components|emotion|sass|less|postcss|@emotion|tailwind|bootstrap|bulma)/i,
+            database: /^(prisma|mongoose|typeorm|sequelize|knex|drizzle|@prisma|pg|mysql|mongodb|redis|sqlite)/i,
+            api: /^(axios|graphql|apollo|urql|@tanstack|swr|trpc|express|fastify|koa|hono|@hono)/i,
+            auth: /^(next-auth|passport|jwt|bcrypt|@auth|lucia|clerk|auth0|firebase-admin)/i,
+            gameEngine: /^(phaser|pixi|three|babylon|matter|p5|kontra|excalibur|kaboom)/i,
+            testing: /^(jest|vitest|mocha|chai|cypress|playwright|@testing-library|msw)/i,
+            linting: /^(eslint|prettier|@typescript-eslint|stylelint|husky|lint-staged)/i,
+            build: /^(webpack|vite|esbuild|rollup|parcel|turbo|tsup|unbuild)/i
+        };
+        
+        for (const dep of deps) {
+            let categorized = false;
+            for (const [category, pattern] of Object.entries(patterns)) {
+                if (pattern.test(dep)) {
+                    categories[category].push(dep);
+                    categorized = true;
+                    break;
+                }
+            }
+            if (!categorized) {
+                categories.utils.push(dep);
+            }
+        }
+        
+        return categories;
+    }
+    
+    /**
+     * Formate la liste des dépendances de manière lisible
+     */
+    private formatDependencyList(deps: string[], categories: Record<string, string[]>): string {
+        const lines: string[] = [];
+        
+        if (categories.ui.length > 0) {
+            lines.push(`- **UI/Framework**: ${categories.ui.join(', ')}`);
+        }
+        if (categories.stateManagement.length > 0) {
+            lines.push(`- **State Management**: ${categories.stateManagement.join(', ')}`);
+        }
+        if (categories.database.length > 0) {
+            lines.push(`- **Database/ORM**: ${categories.database.join(', ')}`);
+        }
+        if (categories.api.length > 0) {
+            lines.push(`- **API/HTTP**: ${categories.api.join(', ')}`);
+        }
+        if (categories.auth.length > 0) {
+            lines.push(`- **Authentification**: ${categories.auth.join(', ')}`);
+        }
+        if (categories.gameEngine.length > 0) {
+            lines.push(`- **Moteur de jeu**: ${categories.gameEngine.join(', ')}`);
+        }
+        if (categories.utils.length > 0) {
+            lines.push(`- **Utilitaires**: ${categories.utils.slice(0, 10).join(', ')}${categories.utils.length > 10 ? ` (+${categories.utils.length - 10} autres)` : ''}`);
+        }
+        
+        return lines.length > 0 ? lines.join('\n') : '- Aucune dépendance analysable';
     }
     
     /**
@@ -1120,52 +1257,23 @@ Aucun projet actif.`);
         const modelInfo = this.getModelInfo(model);
         const isAdvancedModel = modelInfo?.capabilities.reasoning ?? false;
         
-        const prompt = `Tu es un expert en gestion de projet de développement logiciel et en architecture technique.
+        // Déterminer le type de projet
+        const projectType = analysis?.type || currentProject?.type || 'WEB_MOBILE';
+        const isGame = projectType === 'GAME_2D';
+        
+        // Construire le prompt spécialisé
+        const prompt = this.buildAdvancedCompletionPrompt(
+            enrichedContext, 
+            currentProject, 
+            analysis, 
+            isAdvancedModel, 
+            isGame
+        );
 
-${enrichedContext}
-
----
-
-## TA MISSION
-
-${isAdvancedModel ? `Analyse en profondeur les informations ci-dessus. Identifie:
-1. Les forces et faiblesses du projet
-2. Les risques techniques potentiels
-3. Les opportunités d'amélioration
-4. Les phases manquantes dans la roadmap
-
-Puis génère` : 'Génère'} une fiche projet complète au format JSON avec les champs suivants.
-**IMPORTANT**: Ne remplis que les champs qui sont vides ou manquants dans le projet existant.
-
-\`\`\`json
-{
-  "name": "Nom du projet (si manquant)",
-  "concept": "Description détaillée du concept, objectifs et valeur ajoutée (2-4 phrases)",
-  "elevatorPitch": "Pitch accrocheur en une phrase maximum",
-  "targetAudience": "Description précise du public cible avec segments",
-  "validationCriteria": "Critères de succès mesurables (performance, qualité, UX)",
-  "architecture": "Description de l'architecture technique avec patterns utilisés",
-  "roadmap": [
-    {
-      "title": "Nom de la phase",
-      "description": "Description détaillée des livrables",
-      "priority": "Critique|Haute|Moyenne|Basse",
-      "estimatedHours": 40
-    }
-  ],
-  "testCases": ["Cas de test fonctionnel 1", "Cas de test technique 2"],
-  "coreFeatures": ["Feature 1", "Feature 2"]
-}
-\`\`\`
-
-RÈGLES:
-- Réponds UNIQUEMENT avec le JSON valide, sans texte avant ou après
-- Tous les textes doivent être en français
-- Sois précis et actionnable dans les descriptions
-- Adapte la roadmap au type de projet (${analysis?.type === 'GAME_2D' ? 'jeu vidéo' : 'application web/mobile'})
-- Les estimatedHours doivent être réalistes`;
-
-        const response = await this.generateWithOllama(prompt, model);
+        const response = await this.generateWithOllama(prompt, model, { 
+            temperature: 0.6, 
+            num_predict: 6000 
+        });
         
         // Log pour debug
         console.log(`[AICompletionService] Model used: ${model}, Response length: ${response.length}`);
@@ -1188,13 +1296,352 @@ RÈGLES:
 
             const parsed = JSON.parse(cleanResponse);
             
+            // Mettre en cache le résultat
+            const result = this.mergeWithAnalysis(parsed, analysis, currentProject);
+            AICompletionService.analysisCache.set(cacheKey, { result, timestamp: Date.now() });
+            
             // Fusionner avec l'analyse du workspace
-            return this.mergeWithAnalysis(parsed, analysis, currentProject);
+            return result;
         } catch (parseError) {
             console.error('Failed to parse AI response:', parseError);
             // Fallback to workspace analysis
             return this.completeFromAnalysis(currentProject, analysis);
         }
+    }
+
+    /**
+     * Construit un prompt avancé et détaillé pour la complétion de projet
+     */
+    private buildAdvancedCompletionPrompt(
+        enrichedContext: string,
+        currentProject: any,
+        analysis: WorkspaceAnalysis | null,
+        isAdvancedModel: boolean,
+        isGame: boolean
+    ): string {
+        // Identifier les champs manquants
+        const missingFields: string[] = [];
+        if (!currentProject?.name?.trim()) missingFields.push('name');
+        if (!currentProject?.concept?.trim()) missingFields.push('concept');
+        if (!currentProject?.elevatorPitch?.trim()) missingFields.push('elevatorPitch');
+        if (!currentProject?.targetAudience?.trim()) missingFields.push('targetAudience');
+        if (!currentProject?.validationCriteria?.trim()) missingFields.push('validationCriteria');
+        if (!currentProject?.architecture?.trim()) missingFields.push('architecture');
+        if (!currentProject?.roadmap?.length) missingFields.push('roadmap');
+        if (!currentProject?.testCases?.length) missingFields.push('testCases');
+        if (!currentProject?.coreFeatures?.length) missingFields.push('coreFeatures');
+        
+        const systemContext = isGame 
+            ? `Tu es un **Game Designer Senior** et **Chef de Projet Jeux Vidéo** avec 15 ans d'expérience.
+Tu as travaillé sur des jeux indépendants et AAA. Tu connais parfaitement les pipelines de production de jeux 2D, 
+les moteurs comme Phaser, PixiJS, Godot. Tu maîtrises les méthodes Agile adaptées au game dev.`
+            : `Tu es un **Architecte Logiciel Senior** et **Chef de Projet Tech** avec 15 ans d'expérience.
+Tu as conçu des applications web/mobile à grande échelle. Tu maîtrises les architectures modernes (microservices, 
+serverless, JAMstack), les patterns de conception, et les méthodologies Agile/Scrum.`;
+        
+        const analysisInstructions = isAdvancedModel ? `
+## 🔍 PHASE D'ANALYSE (modèle avancé détecté)
+
+Avant de générer le JSON, effectue une analyse approfondie:
+
+1. **Analyse des dépendances**: Identifie la stack exacte et ses implications
+2. **Évaluation de la maturité**: Estime le niveau d'avancement du projet
+3. **Détection des risques**: Identifie les points de friction potentiels
+4. **Opportunités d'amélioration**: Propose des optimisations basées sur les best practices
+5. **Cohérence technique**: Vérifie que les choix technologiques sont cohérents entre eux
+
+Intègre ces insights dans tes suggestions de roadmap et d'architecture.
+` : '';
+        
+        const gameSpecificGuidelines = isGame ? `
+## 🎮 GUIDELINES SPÉCIFIQUES JEU VIDÉO
+
+### Pour le CONCEPT (3-5 phrases):
+- Décris le genre exact (platformer, roguelike, puzzle, shooter, etc.)
+- Mentionne la boucle de gameplay principale ("core loop")
+- Indique les influences/références (jeux similaires qui inspirent)
+- Précise l'USP (Unique Selling Point) qui différencie ce jeu
+- Évoque l'ambiance/esthétique visuelle
+
+### Pour la ROADMAP (8-12 phases minimum):
+Structure en jalons typiques du game dev:
+1. **Pre-Production**
+   - GDD (Game Design Document)
+   - Concept Art & Direction Artistique
+   - Prototype technique (proof of concept)
+   
+2. **Production - Core**
+   - Core Mechanics Implementation
+   - Player Controller & Physics
+   - Camera System
+   - Base Level Design
+   
+3. **Production - Content**
+   - Asset Production (sprites, animations)
+   - Sound Design & Music
+   - Level/Stage Creation
+   - Enemy/NPC Design
+   
+4. **Production - Systems**
+   - UI/UX & Menus
+   - Save/Load System
+   - Progression System
+   - Audio Manager
+   
+5. **Polish & QA**
+   - Game Feel & Juice (screen shake, particles, etc.)
+   - Balancing & Difficulty Curve
+   - Bug Fixing & Optimization
+   - Accessibility Features
+   
+6. **Release**
+   - Build Pipeline
+   - Store Integration (itch.io, Steam, etc.)
+   - Launch Marketing
+   - Post-Launch Support
+
+### Pour l'ARCHITECTURE:
+- Décris le pattern utilisé (ECS, Scene Graph, State Machine)
+- Mentionne l'organisation des assets
+- Explique la gestion des états de jeu
+- Détaille le système d'événements/signaux
+
+### Pour les TEST CASES:
+- Gameplay: "Le joueur peut [action] et [résultat attendu]"
+- Performance: "Le jeu maintient 60 FPS avec [X] entités"
+- Edge cases: "Le jeu gère correctement [situation limite]"
+
+### Pour les CRITÈRES DE VALIDATION:
+Format: "Performance | Gameplay | UX | Accessibilité | Technique"
+Exemple: "60 FPS constant | Contrôles réactifs (<100ms) | Tutoriel intégré | Options de difficulté | Pas de memory leak"
+` : `
+## 🌐 GUIDELINES SPÉCIFIQUES APPLICATION WEB/MOBILE
+
+### Pour le CONCEPT (3-5 phrases):
+- Décris le problème résolu et la valeur apportée
+- Mentionne les fonctionnalités clés (3-4 max)
+- Indique le modèle d'utilisation (SaaS, outil interne, marketplace, etc.)
+- Précise les intégrations importantes
+- Évoque l'approche technique générale
+
+### Pour la ROADMAP (10-15 phases minimum):
+Structure en sprints/jalons typiques:
+
+1. **Foundation**
+   - Architecture & Setup projet
+   - CI/CD Pipeline
+   - Base de données & ORM
+   - Authentication & Authorization
+   
+2. **Core Features**
+   - API REST/GraphQL design
+   - Domain models implementation
+   - Business logic layer
+   - Data validation & sanitization
+   
+3. **Frontend - Structure**
+   - Design System & Components
+   - Routing & Navigation
+   - State Management
+   - API Integration layer
+   
+4. **Frontend - Features**
+   - Feature pages implementation
+   - Forms & Validation
+   - Error handling & Feedback
+   - Responsive design
+   
+5. **Integration**
+   - Third-party integrations
+   - Payment processing (si applicable)
+   - Email/Notifications
+   - File uploads/Storage
+   
+6. **Security & Performance**
+   - Security audit & hardening
+   - Performance optimization
+   - Caching strategy
+   - Rate limiting
+   
+7. **Quality Assurance**
+   - Unit tests (>80% coverage)
+   - Integration tests
+   - E2E tests (happy paths)
+   - Load testing
+   
+8. **Deployment**
+   - Staging environment
+   - Production setup
+   - Monitoring & Logging
+   - Documentation
+
+### Pour l'ARCHITECTURE:
+- Décris les couches (presentation, business, data)
+- Mentionne les patterns (MVC, Clean Architecture, Hexagonal)
+- Explique la stratégie de déploiement
+- Détaille la gestion des erreurs et logs
+
+### Pour les TEST CASES:
+- Fonctionnel: "L'utilisateur peut [action] depuis [contexte]"
+- API: "GET /resource retourne [status] avec [payload]"
+- Sécurité: "Un utilisateur non-auth ne peut pas [action protégée]"
+- Performance: "La page charge en moins de [X]ms"
+
+### Pour les CRITÈRES DE VALIDATION:
+Format: "Performance | Sécurité | UX | Qualité | Monitoring"
+Exemple: "LCP < 2.5s | OWASP Top 10 mitigé | Score Lighthouse > 90 | Coverage > 80% | APM configuré"
+`;
+        
+        const exampleOutput = isGame ? `
+### EXEMPLE DE SORTIE ATTENDUE (Jeu 2D):
+\`\`\`json
+{
+  "name": "Neon Dash",
+  "concept": "Un runner/platformer 2D néon-rétro où le joueur incarne un coureur cyberpunk fuyant les forces corporatives dans un monde dystopique. La boucle de gameplay repose sur un système de dash/esquive et de collecte d'énergie pour maintenir sa vitesse. Inspiré par Celeste pour la précision des contrôles et Hotline Miami pour l'esthétique. L'USP est le système de 'time-flow' qui ralentit le temps pendant les esquives réussies.",
+  "elevatorPitch": "Celeste rencontre Blade Runner dans un runner 2D où chaque milliseconde compte.",
+  "targetAudience": "Joueurs mid-core (18-35 ans) appréciant les jeux à skill expression élevée. Fans de speedrunning et de défis précis. Communauté indie gaming sur Steam et itch.io.",
+  "validationCriteria": "60 FPS constant sur GPU mid-range | Input lag < 50ms | Première heure engageante (rétention > 70%) | Accessibilité: remapping complet + mode daltonien | Speedrun-friendly: timer intégré",
+  "architecture": "Architecture ECS (Entity-Component-System) avec Phaser 3. Scene Manager pour transitions fluides. Event Bus centralisé pour communication inter-systèmes. Asset pipeline avec TexturePacker pour atlases optimisés. State Machine pour les états du joueur (idle, run, dash, hurt). Pooling d'objets pour les particules et projectiles.",
+  "coreFeatures": [
+    "Dash omnidirectionnel avec i-frames",
+    "Système de combo multiplicateur",
+    "Time-flow (bullet time) sur esquive parfaite",
+    "Génération procédurale de segments de niveau",
+    "Leaderboards en temps réel",
+    "Mode quotidien avec seed partagé"
+  ],
+  "roadmap": [
+    {"title": "Game Design Document", "description": "Documentation complète des mécaniques: dash, time-flow, scoring. Flowcharts de progression. Moodboard artistique néon-cyberpunk.", "priority": "Critique", "estimatedHours": 24},
+    {"title": "Prototype Core - Movement", "description": "Implémentation du player controller: run, jump, dash. Physics tweaking pour le 'game feel'. Configuration des collisions.", "priority": "Critique", "estimatedHours": 40},
+    {"title": "Prototype Core - Time Flow", "description": "Système de ralentissement temporel. Détection d'esquive parfaite. Feedback visuel (shader slowmo).", "priority": "Critique", "estimatedHours": 32},
+    {"title": "Camera System", "description": "Camera follow avec smoothing. Screen shake sur impact. Zoom dynamique selon la vitesse.", "priority": "Haute", "estimatedHours": 16},
+    {"title": "Level Design - Tileset", "description": "Création du tileset néon. Règles de placement automatique. Props et décorations.", "priority": "Haute", "estimatedHours": 40},
+    {"title": "Enemy Design", "description": "3 types d'ennemis de base: patrouilleur, tireur, chargeur. Patterns d'attaque. IA simple mais lisible.", "priority": "Haute", "estimatedHours": 48},
+    {"title": "Audio - SFX", "description": "Sons de dash, impact, collectibles. Layering audio pour intensité. Système de mixage dynamique.", "priority": "Haute", "estimatedHours": 24},
+    {"title": "Audio - Music", "description": "Track synthwave principal. Variations selon l'intensité. Transitions musicales seamless.", "priority": "Moyenne", "estimatedHours": 32},
+    {"title": "UI/UX Menus", "description": "Menu principal stylisé. Pause menu. Settings (audio, contrôles, accessibilité). HUD minimal.", "priority": "Haute", "estimatedHours": 32},
+    {"title": "Progression System", "description": "Système de déverrouillage. Sauvegarde locale. Statistiques de run.", "priority": "Moyenne", "estimatedHours": 24},
+    {"title": "Polish - VFX", "description": "Particules de dash, trainées de vitesse. Post-processing bloom/chromatic. Death animation satisfaisante.", "priority": "Moyenne", "estimatedHours": 32},
+    {"title": "Balancing", "description": "Ajustement de la courbe de difficulté. Playtests avec métriques. Itération sur les timings.", "priority": "Haute", "estimatedHours": 40},
+    {"title": "QA & Bug Fixing", "description": "Tests systématiques de tous les niveaux. Correction des edge cases. Optimisation mémoire.", "priority": "Critique", "estimatedHours": 48},
+    {"title": "Build & Release", "description": "Builds Windows/Mac/Linux. Page Steam/itch.io. Trailer de lancement. Press kit.", "priority": "Critique", "estimatedHours": 32}
+  ],
+  "testCases": [
+    "Le joueur peut dash dans les 8 directions avec les i-frames actives",
+    "Le time-flow s'active sur esquive parfaite (marge de 5 frames)",
+    "Le score multiplicateur se reset correctement après un hit",
+    "Le jeu maintient 60 FPS avec 50+ entités à l'écran",
+    "La sauvegarde persiste correctement entre les sessions",
+    "Les inputs sont reconnus en moins de 50ms",
+    "Le jeu ne crash pas après 1h de session continue",
+    "Le mode accessibilité daltonien fonctionne sur tous les éléments UI"
+  ]
+}
+\`\`\`
+` : `
+### EXEMPLE DE SORTIE ATTENDUE (Application Web):
+\`\`\`json
+{
+  "name": "TaskFlow Pro",
+  "concept": "Une plateforme SaaS de gestion de projet collaborative conçue pour les équipes tech de 5-50 personnes. Combine la simplicité de Trello avec la puissance de Jira. Focus sur l'automatisation des workflows répétitifs et l'intégration native avec les outils de développement (GitHub, GitLab, Slack). Architecture moderne serverless pour une scalabilité optimale et des coûts réduits.",
+  "elevatorPitch": "La gestion de projet qui s'adapte à votre équipe, pas l'inverse - automatisez 80% de vos tâches administratives.",
+  "targetAudience": "Équipes de développement (startups et scale-ups). Tech leads et engineering managers. Product managers en environnement agile. Segment principal: équipes de 10-30 personnes en mode hybride/remote.",
+  "validationCriteria": "LCP < 2s | TTFB < 200ms | Score Lighthouse > 95 | OWASP Top 10 audité | Uptime 99.9% SLA | Tests coverage > 85% | Accessibilité WCAG 2.1 AA",
+  "architecture": "Architecture Clean/Hexagonale avec Next.js 14 (App Router). API Routes pour BFF pattern. Prisma + PostgreSQL pour la persistance. Redis pour le caching et les sessions. Architecture événementielle avec webhooks pour les intégrations. Déploiement sur Vercel (Edge Functions) avec Neon pour la DB serverless. Authentification via NextAuth.js avec SSO SAML/OIDC. Feature flags via LaunchDarkly pour le déploiement progressif.",
+  "coreFeatures": [
+    "Boards Kanban avec colonnes personnalisables",
+    "Automatisations no-code (triggers + actions)",
+    "Intégrations Git (PR linking, branch création)",
+    "Time tracking intégré avec rapports",
+    "Templates de projets partagés",
+    "Notifications temps réel (WebSocket)",
+    "API REST publique + webhooks"
+  ],
+  "roadmap": [
+    {"title": "Project Setup & Architecture", "description": "Initialisation Next.js 14, configuration TypeScript strict, setup Prisma avec PostgreSQL, configuration ESLint/Prettier, Husky pre-commit hooks, structure des dossiers Clean Architecture.", "priority": "Critique", "estimatedHours": 16},
+    {"title": "CI/CD Pipeline", "description": "GitHub Actions pour tests automatisés, preview deployments sur PR, production deployment sur merge main. Configuration Vercel avec environment secrets.", "priority": "Critique", "estimatedHours": 12},
+    {"title": "Authentication System", "description": "NextAuth.js avec providers (Google, GitHub, Email magic link). Gestion des sessions JWT. Middleware de protection des routes. Pages login/signup/reset password.", "priority": "Critique", "estimatedHours": 24},
+    {"title": "Database Schema & ORM", "description": "Modélisation Prisma: Users, Workspaces, Projects, Boards, Columns, Cards, Comments, Activities. Relations et indexes. Seed data pour développement.", "priority": "Critique", "estimatedHours": 20},
+    {"title": "Design System", "description": "Components library avec Radix UI + Tailwind. Tokens (couleurs, typographie, spacing). Composants: Button, Input, Card, Modal, Dropdown, Toast. Documentation Storybook.", "priority": "Haute", "estimatedHours": 40},
+    {"title": "Workspace & Project CRUD", "description": "API Routes pour workspaces et projets. Gestion des membres et rôles (owner, admin, member). Invitations par email. Settings pages.", "priority": "Haute", "estimatedHours": 32},
+    {"title": "Kanban Board - Core", "description": "Affichage board avec colonnes et cards. Drag & drop (dnd-kit). Création/édition inline. Card detail modal. Filtres et recherche.", "priority": "Critique", "estimatedHours": 48},
+    {"title": "Card Features", "description": "Assignees, due dates, labels, checklists. Markdown description avec preview. Attachments (upload vers S3/Cloudinary). Activity log.", "priority": "Haute", "estimatedHours": 40},
+    {"title": "Comments & Collaboration", "description": "Système de commentaires threaded. Mentions @user. Reactions emoji. Notifications in-app. Email digest.", "priority": "Haute", "estimatedHours": 32},
+    {"title": "Real-time Updates", "description": "WebSocket avec Socket.io ou Pusher. Sync en temps réel du board. Présence indicators (qui regarde quoi). Optimistic updates.", "priority": "Haute", "estimatedHours": 32},
+    {"title": "Automations Engine", "description": "UI builder d'automations (when X then Y). Triggers: card moved, due date, label added. Actions: assign, notify, move, create. Historique d'exécution.", "priority": "Moyenne", "estimatedHours": 56},
+    {"title": "Integrations - GitHub", "description": "OAuth GitHub App. Link PR to cards. Auto-move card on PR merge. Branch name from card. Commit references.", "priority": "Moyenne", "estimatedHours": 40},
+    {"title": "API publique & Webhooks", "description": "REST API documentée (OpenAPI/Swagger). API keys management. Rate limiting. Webhooks configurables avec retry logic.", "priority": "Moyenne", "estimatedHours": 32},
+    {"title": "Search & Filters", "description": "Recherche full-text avec PostgreSQL ou Algolia. Filtres avancés sauvegardables. Vues personnalisées.", "priority": "Moyenne", "estimatedHours": 24},
+    {"title": "Testing Suite", "description": "Unit tests Vitest (utils, hooks, API handlers). Integration tests avec MSW. E2E Playwright (user journeys critiques). Visual regression tests.", "priority": "Haute", "estimatedHours": 48},
+    {"title": "Performance Optimization", "description": "Analyse bundle avec @next/bundle-analyzer. Code splitting agressif. Image optimization. Caching Redis pour queries fréquentes. DB indexes optimization.", "priority": "Haute", "estimatedHours": 24},
+    {"title": "Security Hardening", "description": "Audit OWASP. CSP headers. Input sanitization. Rate limiting par IP/user. Logs de sécurité. Penetration testing.", "priority": "Critique", "estimatedHours": 32},
+    {"title": "Monitoring & Observability", "description": "Sentry pour error tracking. Vercel Analytics. Custom metrics avec Prometheus/Grafana ou Datadog. Health check endpoints.", "priority": "Haute", "estimatedHours": 16},
+    {"title": "Documentation", "description": "README complet. Guide de contribution. Documentation API. Guide utilisateur. Changelog automatisé.", "priority": "Moyenne", "estimatedHours": 16},
+    {"title": "Launch Preparation", "description": "Staging environment validation. Load testing avec k6. Runbook opérationnel. Support channels setup. Billing integration (Stripe).", "priority": "Critique", "estimatedHours": 32}
+  ],
+  "testCases": [
+    "Un utilisateur peut créer un compte et se connecter via email magic link",
+    "Un utilisateur peut créer un workspace et inviter des membres par email",
+    "Le drag & drop des cards fonctionne avec synchronisation temps réel multi-utilisateurs",
+    "Les automations se déclenchent correctement sur les triggers configurés",
+    "L'API publique respecte les rate limits configurés (100 req/min)",
+    "Un utilisateur non-membre ne peut pas accéder à un workspace privé (401)",
+    "La page board charge en moins de 2 secondes avec 500 cards",
+    "Les webhooks sont retentés 3 fois en cas d'échec avec backoff exponentiel",
+    "Le score Lighthouse reste > 90 sur les pages principales",
+    "Les sessions expirent correctement après 7 jours d'inactivité"
+  ]
+}
+\`\`\`
+`;
+
+        return `${systemContext}
+
+Tu dois générer une fiche projet **COMPLÈTE, DÉTAILLÉE et PROFESSIONNELLE** basée sur l'analyse ci-dessous.
+
+${enrichedContext}
+
+---
+${analysisInstructions}
+${gameSpecificGuidelines}
+
+## 📝 CHAMPS À COMPLÉTER
+
+Les champs suivants sont vides ou manquants et **DOIVENT** être générés: **${missingFields.join(', ')}**
+
+## ⚠️ RÈGLES CRITIQUES
+
+1. **QUANTITÉ**: Génère au minimum 8-12 phases dans la roadmap, chacune avec une description détaillée de 2-3 phrases
+2. **QUALITÉ**: Chaque description doit être actionnable et spécifique au contexte détecté
+3. **COHÉRENCE**: La roadmap doit suivre un ordre logique de développement
+4. **RÉALISME**: Les estimatedHours doivent être réalistes (16-56h par phase typiquement)
+5. **FRANÇAIS**: Tous les textes en français, sauf termes techniques anglais acceptés
+6. **CONTEXTE**: Utilise les informations du workspace (dépendances, fichiers) pour personnaliser les suggestions
+7. **COMPLÉTION UNIQUEMENT**: Ne remplace PAS les champs déjà remplis, génère uniquement les champs vides
+
+${exampleOutput}
+
+## 🎯 FORMAT DE SORTIE
+
+Réponds **UNIQUEMENT** avec le JSON valide (pas de texte avant/après, pas d'explication).
+Assure-toi que le JSON est valide et peut être parsé.
+
+\`\`\`json
+{
+  "name": "...",
+  "concept": "...",
+  "elevatorPitch": "...",
+  "targetAudience": "...",
+  "validationCriteria": "...",
+  "architecture": "...",
+  "coreFeatures": ["...", "..."],
+  "roadmap": [
+    {"title": "...", "description": "...", "priority": "Critique|Haute|Moyenne|Basse", "estimatedHours": 40}
+  ],
+  "testCases": ["...", "..."]
+}
+\`\`\`
+`;
     }
 
     /**
@@ -1296,7 +1743,7 @@ RÈGLES:
     }
 
     /**
-     * Complétion depuis l'analyse du workspace uniquement (fallback)
+     * Complétion depuis l'analyse du workspace uniquement (fallback amélioré)
      */
     private completeFromAnalysis(currentProject: any, analysis: WorkspaceAnalysis | null): AICompletionResult {
         if (!analysis) {
@@ -1304,6 +1751,8 @@ RÈGLES:
         }
 
         const result: AICompletionResult = {};
+        const isGame = analysis.type === 'GAME_2D';
+        const projectName = analysis.name || currentProject?.name || 'Mon Projet';
 
         // Utiliser les données de l'analyse
         if (!currentProject?.name?.trim()) {
@@ -1311,23 +1760,26 @@ RÈGLES:
         }
 
         if (!currentProject?.concept?.trim()) {
-            result.concept = analysis.concept;
+            // Générer un concept basé sur les dépendances détectées
+            const deps = analysis.dependencies || [];
+            const specs = analysis.specs || {};
+            
+            if (isGame) {
+                const engine = specs.gameEngine || 'un moteur 2D';
+                result.concept = `${projectName} est un jeu 2D développé avec ${engine}. ${analysis.concept || 'Ce projet combine des mécaniques de gameplay engageantes avec un style visuel distinctif pour créer une expérience de jeu unique et mémorable.'}`;
+            } else {
+                const frontend = specs.frontendFramework || 'des technologies modernes';
+                const backend = specs.backendFramework ? ` avec un backend ${specs.backendFramework}` : '';
+                result.concept = `${projectName} est une application ${specs.pwaSupport ? 'PWA ' : ''}construite avec ${frontend}${backend}. ${analysis.concept || 'Ce projet vise à offrir une expérience utilisateur fluide et moderne, avec une architecture pensée pour la scalabilité et la maintenabilité.'}`;
+            }
         }
 
         result.type = analysis.type;
         result.specs = { ...(currentProject?.specs || {}), ...analysis.specs };
 
+        // Générer une roadmap détaillée basée sur l'analyse
         if (!currentProject?.roadmap?.length) {
-            result.roadmap = analysis.suggestedPhases.map((phase, i) => ({
-                id: `gen-${Date.now()}-${i}`,
-                title: phase.title,
-                description: phase.description,
-                status: phase.status,
-                priority: phase.priority,
-                progress: 0,
-                linkedAssets: [],
-                dependencies: []
-            }));
+            result.roadmap = this.generateDetailedRoadmapFromAnalysis(analysis, isGame);
         }
 
         if (!currentProject?.commands?.length) {
@@ -1344,65 +1796,355 @@ RÈGLES:
             }));
         }
 
-        // Générer le reste
-        const isGame = analysis.type === 'GAME_2D';
-        
+        // Elevator Pitch basé sur l'analyse
         if (!currentProject?.elevatorPitch?.trim()) {
-            result.elevatorPitch = isGame
-                ? `${analysis.name} - Un jeu captivant qui combine gameplay addictif et style visuel unique.`
-                : `${analysis.name} - Une application moderne offrant une expérience utilisateur fluide.`;
+            if (isGame) {
+                const engine = analysis.specs.gameEngine;
+                result.elevatorPitch = `${projectName} - ${engine ? `Propulsé par ${engine}, u` : 'U'}ne expérience de jeu 2D unique où chaque session compte.`;
+            } else {
+                const stack = analysis.specs.frontendFramework || 'une stack moderne';
+                result.elevatorPitch = `${projectName} - Une application ${stack} conçue pour simplifier et enrichir votre quotidien numérique.`;
+            }
         }
 
+        // Target Audience adapté au type de projet
+        if (!currentProject?.targetAudience?.trim()) {
+            if (isGame) {
+                result.targetAudience = 'Joueurs indépendants et mid-core (16-40 ans) appréciant les expériences de jeu soignées. Communauté gaming sur Steam, itch.io et Discord. Streamers et content creators à la recherche de contenus originaux.';
+            } else {
+                const hasPWA = analysis.specs.pwaSupport;
+                result.targetAudience = `Utilisateurs ${hasPWA ? 'mobiles et desktop' : 'web'} recherchant des outils efficaces et bien conçus. Professionnels et équipes (25-50 ans) valorisant la productivité. Early adopters ouverts aux solutions modernes.`;
+            }
+        }
+
+        // Critères de validation détaillés
         if (!currentProject?.validationCriteria?.trim()) {
-            result.validationCriteria = isGame
-                ? 'Performance stable 60 FPS, contrôles réactifs, 0 bug bloquant'
-                : 'Temps de chargement < 3s, score accessibilité AA, tests > 80%';
+            if (isGame) {
+                result.validationCriteria = 'Performance: 60 FPS sur GPU mid-range | Gameplay: Input lag < 50ms, contrôles précis | UX: Tutoriel intuitif, courbe d\'apprentissage douce | Stabilité: Pas de crash sur 2h de session | Accessibilité: Remapping des contrôles, options visuelles';
+            } else {
+                const hasTests = analysis.detectedFiles.hasTests;
+                const hasCICD = analysis.detectedFiles.hasCICD;
+                result.validationCriteria = `Performance: LCP < 2.5s, TTI < 3.5s | UX: Score Lighthouse > 85 | ${hasTests ? 'Tests: Coverage > 80%' : 'Qualité: Code review systématique'} | Sécurité: OWASP Top 10 | ${hasCICD ? 'CI/CD: Déploiement automatisé' : 'Déploiement: Process documenté'}`;
+            }
         }
 
+        // Architecture basée sur les technologies détectées
+        if (!currentProject?.architecture?.trim()) {
+            result.architecture = this.generateArchitectureFromAnalysis(analysis, isGame);
+        }
+
+        // Test Cases détaillés
         if (!currentProject?.testCases?.length) {
-            result.testCases = isGame
-                ? ['Gameplay principal fonctionne', 'Collisions correctes', 'Audio fonctionne', 'Pas de crash']
-                : ['Authentification fonctionne', 'Données sauvegardées', 'Interface responsive', 'Erreurs affichées'];
+            result.testCases = this.generateTestCasesFromAnalysis(analysis, isGame);
+        }
+
+        // Core Features
+        if (!currentProject?.coreFeatures?.length && analysis.coreFeatures?.length > 0) {
+            result.coreFeatures = analysis.coreFeatures;
         }
 
         return result;
     }
 
     /**
-     * Génère une complétion par défaut sans workspace
+     * Génère une roadmap détaillée basée sur l'analyse du workspace
+     */
+    private generateDetailedRoadmapFromAnalysis(analysis: WorkspaceAnalysis, isGame: boolean): any[] {
+        const baseTimestamp = Date.now();
+        const roadmap: any[] = [];
+        
+        if (isGame) {
+            // Roadmap détaillée pour jeu 2D
+            roadmap.push(
+                { id: `gen-${baseTimestamp}-1`, title: 'Game Design Document', description: 'Documentation exhaustive des mécaniques de jeu, core loop, progression, et direction artistique. Moodboard et références.', status: 'todo', priority: 'Critique', progress: 0, estimatedHours: 24 },
+                { id: `gen-${baseTimestamp}-2`, title: 'Prototype - Player Controller', description: 'Implémentation du contrôleur joueur: mouvements, physique, collisions. Itération sur le game feel.', status: 'todo', priority: 'Critique', progress: 0, estimatedHours: 32 },
+                { id: `gen-${baseTimestamp}-3`, title: 'Core Mechanics', description: 'Développement des mécaniques principales différenciantes. Validation du fun factor via playtests.', status: 'todo', priority: 'Critique', progress: 0, estimatedHours: 40 }
+            );
+            
+            if (analysis.specs.gameEngine) {
+                roadmap.push({ id: `gen-${baseTimestamp}-4`, title: `Configuration ${analysis.specs.gameEngine}`, description: `Optimisation de la configuration ${analysis.specs.gameEngine}, structure des scenes, pipeline de build.`, status: 'todo', priority: 'Haute', progress: 0, estimatedHours: 16 });
+            }
+            
+            roadmap.push(
+                { id: `gen-${baseTimestamp}-5`, title: 'Camera & View System', description: 'Système de caméra avec smooth follow, boundaries, effets dynamiques (shake, zoom).', status: 'todo', priority: 'Haute', progress: 0, estimatedHours: 16 },
+                { id: `gen-${baseTimestamp}-6`, title: 'Art Assets Production', description: 'Création des sprites, backgrounds, animations. Cohérence visuelle avec la direction artistique.', status: 'todo', priority: 'Haute', progress: 0, estimatedHours: 60 },
+                { id: `gen-${baseTimestamp}-7`, title: 'Level Design', description: 'Création des niveaux avec progression de difficulté. Placement des éléments, secrets, tutoriel.', status: 'todo', priority: 'Haute', progress: 0, estimatedHours: 48 },
+                { id: `gen-${baseTimestamp}-8`, title: 'Audio Integration', description: 'Effets sonores, musique, système audio adaptatif. Mixage et mastering.', status: 'todo', priority: 'Haute', progress: 0, estimatedHours: 32 },
+                { id: `gen-${baseTimestamp}-9`, title: 'UI/UX & Menus', description: 'Menus principal, pause, settings. HUD in-game. Transitions et feedback visuels.', status: 'todo', priority: 'Haute', progress: 0, estimatedHours: 28 },
+                { id: `gen-${baseTimestamp}-10`, title: 'Save System', description: 'Sauvegarde/chargement, progression persistante, gestion des slots.', status: 'todo', priority: 'Haute', progress: 0, estimatedHours: 16 },
+                { id: `gen-${baseTimestamp}-11`, title: 'Polish & Juice', description: 'Screen shake, particules, animations de transition, feedback satisfaisants.', status: 'todo', priority: 'Moyenne', progress: 0, estimatedHours: 32 },
+                { id: `gen-${baseTimestamp}-12`, title: 'Balancing', description: 'Ajustement difficulté, pacing, courbe de progression. Playtests itératifs.', status: 'todo', priority: 'Haute', progress: 0, estimatedHours: 24 },
+                { id: `gen-${baseTimestamp}-13`, title: 'QA & Bug Fixing', description: 'Tests exhaustifs, correction des bugs critiques, tests de régression.', status: 'todo', priority: 'Critique', progress: 0, estimatedHours: 40 },
+                { id: `gen-${baseTimestamp}-14`, title: 'Build & Release', description: 'Builds multi-plateformes, page store, trailer, press kit, soumission.', status: 'todo', priority: 'Critique', progress: 0, estimatedHours: 24 }
+            );
+        } else {
+            // Roadmap détaillée pour application web/mobile
+            roadmap.push(
+                { id: `gen-${baseTimestamp}-1`, title: 'Architecture & Project Setup', description: 'Structure du projet, configuration TypeScript, ESLint, Prettier. Patterns architecturaux.', status: 'todo', priority: 'Critique', progress: 0, estimatedHours: 16 }
+            );
+            
+            if (analysis.detectedFiles.hasCICD || analysis.devDependencies.some(d => /husky|lint-staged/.test(d))) {
+                roadmap.push({ id: `gen-${baseTimestamp}-2`, title: 'CI/CD Pipeline', description: 'GitHub Actions / GitLab CI. Tests automatisés, preview deployments, production workflow.', status: 'todo', priority: 'Critique', progress: 0, estimatedHours: 12 });
+            }
+            
+            if (analysis.detectedFiles.hasPrisma || analysis.dependencies.some(d => /prisma|typeorm|mongoose|sequelize/.test(d))) {
+                roadmap.push({ id: `gen-${baseTimestamp}-3`, title: 'Database & ORM', description: 'Schéma de données, migrations, relations, indexes. Seed data pour développement.', status: 'todo', priority: 'Critique', progress: 0, estimatedHours: 20 });
+            }
+            
+            roadmap.push(
+                { id: `gen-${baseTimestamp}-4`, title: 'Authentication System', description: 'Inscription, connexion, reset password, sessions. Middleware de protection.', status: 'todo', priority: 'Critique', progress: 0, estimatedHours: 28 }
+            );
+            
+            if (analysis.detectedFiles.hasTailwind || analysis.dependencies.some(d => /tailwind|@mui|chakra|radix/.test(d))) {
+                roadmap.push({ id: `gen-${baseTimestamp}-5`, title: 'Design System', description: 'Bibliothèque de composants UI, tokens design, thème. Documentation Storybook.', status: 'todo', priority: 'Haute', progress: 0, estimatedHours: 36 });
+            }
+            
+            roadmap.push(
+                { id: `gen-${baseTimestamp}-6`, title: 'Core API Development', description: 'Endpoints REST/GraphQL principaux. Validation, gestion d\'erreurs, documentation.', status: 'todo', priority: 'Critique', progress: 0, estimatedHours: 44 },
+                { id: `gen-${baseTimestamp}-7`, title: 'Frontend - Core Pages', description: 'Pages principales: dashboard, listings, formulaires. Routing, state management.', status: 'todo', priority: 'Haute', progress: 0, estimatedHours: 48 }
+            );
+            
+            if (analysis.dependencies.some(d => /socket|pusher|sse|realtime/.test(d))) {
+                roadmap.push({ id: `gen-${baseTimestamp}-8`, title: 'Real-time Features', description: 'WebSocket/SSE, notifications live, sync multi-utilisateurs.', status: 'todo', priority: 'Moyenne', progress: 0, estimatedHours: 24 });
+            }
+            
+            roadmap.push(
+                { id: `gen-${baseTimestamp}-9`, title: 'Search & Filtering', description: 'Recherche full-text, filtres avancés, pagination performante.', status: 'todo', priority: 'Haute', progress: 0, estimatedHours: 20 }
+            );
+            
+            if (analysis.detectedFiles.hasTests || analysis.devDependencies.some(d => /vitest|jest|mocha|cypress|playwright/.test(d))) {
+                roadmap.push({ id: `gen-${baseTimestamp}-10`, title: 'Testing Suite', description: 'Tests unitaires, intégration, E2E. Coverage > 80% sur la logique métier.', status: 'todo', priority: 'Haute', progress: 0, estimatedHours: 40 });
+            }
+            
+            roadmap.push(
+                { id: `gen-${baseTimestamp}-11`, title: 'Security Audit', description: 'Audit OWASP, headers CSP, rate limiting, sanitization, encryption.', status: 'todo', priority: 'Critique', progress: 0, estimatedHours: 20 },
+                { id: `gen-${baseTimestamp}-12`, title: 'Performance Optimization', description: 'Bundle analysis, code splitting, caching, DB optimization, CDN.', status: 'todo', priority: 'Haute', progress: 0, estimatedHours: 20 },
+                { id: `gen-${baseTimestamp}-13`, title: 'Monitoring Setup', description: 'Error tracking, analytics, APM, alerting. Dashboards opérationnels.', status: 'todo', priority: 'Haute', progress: 0, estimatedHours: 12 },
+                { id: `gen-${baseTimestamp}-14`, title: 'Documentation', description: 'README, API docs, guides utilisateur, changelog, contributing.', status: 'todo', priority: 'Moyenne', progress: 0, estimatedHours: 14 },
+                { id: `gen-${baseTimestamp}-15`, title: 'Launch Preparation', description: 'Staging validation, load testing, runbook, plan de rollback, go-live.', status: 'todo', priority: 'Critique', progress: 0, estimatedHours: 20 }
+            );
+        }
+        
+        return roadmap;
+    }
+
+    /**
+     * Génère une description d'architecture basée sur l'analyse
+     */
+    private generateArchitectureFromAnalysis(analysis: WorkspaceAnalysis, isGame: boolean): string {
+        const specs = analysis.specs;
+        const deps = analysis.dependencies;
+        
+        if (isGame) {
+            const engine = specs.gameEngine || 'moteur 2D';
+            return `Architecture ${engine} avec pattern Scene Manager pour la navigation entre écrans. ` +
+                   `Système ECS (Entity-Component-System) pour les entités de jeu. ` +
+                   `Event Bus centralisé pour la communication inter-systèmes. ` +
+                   `Object pooling pour l'optimisation mémoire des particules et projectiles. ` +
+                   `State Machine pour les états des entités (player, ennemis). ` +
+                   `Asset pipeline avec chargement différé et progress tracking.`;
+        } else {
+            const parts: string[] = [];
+            
+            if (specs.frontendFramework) {
+                parts.push(`Frontend ${specs.frontendFramework}`);
+            }
+            
+            if (specs.backendFramework) {
+                parts.push(`backend ${specs.backendFramework}`);
+            }
+            
+            if (deps.some(d => /prisma/.test(d))) {
+                parts.push('ORM Prisma pour la couche données');
+            } else if (deps.some(d => /typeorm|sequelize|mongoose/.test(d))) {
+                parts.push('ORM pour la persistance');
+            }
+            
+            if (deps.some(d => /redis/.test(d))) {
+                parts.push('Redis pour le caching');
+            }
+            
+            if (analysis.detectedFiles.hasGraphQL) {
+                parts.push('API GraphQL');
+            }
+            
+            if (deps.some(d => /trpc/.test(d))) {
+                parts.push('tRPC pour la type-safety API');
+            }
+            
+            const baseArch = parts.length > 0 ? parts.join(' avec ') + '. ' : '';
+            
+            return `${baseArch}Architecture modulaire séparant les couches présentation, logique métier et données. ` +
+                   `Pattern Repository pour l'accès aux données. ` +
+                   `Gestion centralisée des erreurs et logging. ` +
+                   `${specs.pwaSupport ? 'Support PWA avec service worker pour le mode offline. ' : ''}` +
+                   `${analysis.detectedFiles.hasDockerfile ? 'Containerisation Docker pour le déploiement. ' : ''}` +
+                   `CI/CD avec tests automatisés et déploiement continu.`;
+        }
+    }
+
+    /**
+     * Génère des cas de test basés sur l'analyse
+     */
+    private generateTestCasesFromAnalysis(analysis: WorkspaceAnalysis, isGame: boolean): string[] {
+        if (isGame) {
+            return [
+                'Le joueur peut se déplacer dans toutes les directions avec des contrôles réactifs',
+                'Les collisions avec l\'environnement et les entités sont détectées correctement',
+                'La mécanique principale fonctionne avec feedback visuel et sonore',
+                'Le jeu maintient 60 FPS avec la charge maximale d\'entités prévue',
+                'La sauvegarde persiste correctement entre les sessions',
+                'Le jeu charge en temps acceptable (< 5s) sur le matériel cible',
+                'Aucun crash après une session prolongée (2h+)',
+                'Les options d\'accessibilité s\'appliquent immédiatement',
+                'L\'audio se mixe correctement sans clipping ni saturation',
+                'Le jeu gère correctement la perte/reprise de focus'
+            ];
+        } else {
+            const testCases = [
+                'Un utilisateur peut créer un compte et se connecter',
+                'Le reset password fonctionne avec envoi d\'email',
+                'Les opérations CRUD sont persistées correctement'
+            ];
+            
+            if (analysis.detectedFiles.hasPrisma || analysis.dependencies.some(d => /prisma|typeorm/.test(d))) {
+                testCases.push('Les relations de base de données sont maintenues lors des opérations');
+            }
+            
+            testCases.push(
+                'Un utilisateur non-authentifié ne peut pas accéder aux routes protégées',
+                'Les validations de formulaires affichent les erreurs appropriées',
+                'La recherche retourne des résultats pertinents en temps acceptable'
+            );
+            
+            if (analysis.specs.pwaSupport) {
+                testCases.push('L\'application fonctionne en mode offline avec les données cachées');
+            }
+            
+            testCases.push(
+                'L\'interface est responsive sur mobile, tablette et desktop',
+                'Les erreurs serveur sont affichées de manière user-friendly',
+                'Les performances restent acceptables avec un grand volume de données'
+            );
+            
+            return testCases;
+        }
+    }
+
+    /**
+     * Génère une complétion par défaut sans workspace (fallback amélioré)
      */
     private generateDefaultCompletion(currentProject: any): AICompletionResult {
         const isGame = currentProject?.type === 'GAME_2D';
+        const projectName = currentProject?.name || 'Mon Projet';
         
-        return {
-            concept: isGame
-                ? 'Un jeu 2D innovant combinant mécaniques addictives et style visuel unique.'
-                : 'Une application moderne offrant une expérience utilisateur fluide et intuitive.',
-            elevatorPitch: isGame
-                ? 'Le jeu qui réinvente le genre avec une approche fraîche.'
-                : 'L\'application qui simplifie votre quotidien.',
-            targetAudience: isGame
-                ? 'Joueurs casual et mid-core, 18-35 ans'
-                : 'Professionnels et particuliers',
-            validationCriteria: isGame
-                ? 'Performance 60 FPS, contrôles réactifs, 0 bug bloquant'
-                : 'Chargement < 3s, accessibilité AA, tests > 80%',
-            roadmap: isGame ? [
-                { id: `gen-${Date.now()}-1`, title: 'Game Design Document', description: 'Définition des mécaniques', status: 'todo', priority: 'Critique', progress: 0 },
-                { id: `gen-${Date.now()}-2`, title: 'Prototype', description: 'Core gameplay', status: 'todo', priority: 'Haute', progress: 0 },
-                { id: `gen-${Date.now()}-3`, title: 'Art & Assets', description: 'Visuels et sons', status: 'todo', priority: 'Haute', progress: 0 },
-                { id: `gen-${Date.now()}-4`, title: 'Polish', description: 'Finitions', status: 'todo', priority: 'Moyenne', progress: 0 },
-                { id: `gen-${Date.now()}-5`, title: 'Release', description: 'Publication', status: 'todo', priority: 'Critique', progress: 0 }
-            ] : [
-                { id: `gen-${Date.now()}-1`, title: 'Spécifications', description: 'UX et fonctionnalités', status: 'todo', priority: 'Critique', progress: 0 },
-                { id: `gen-${Date.now()}-2`, title: 'Backend', description: 'API et BDD', status: 'todo', priority: 'Haute', progress: 0 },
-                { id: `gen-${Date.now()}-3`, title: 'Frontend', description: 'Interface', status: 'todo', priority: 'Haute', progress: 0 },
-                { id: `gen-${Date.now()}-4`, title: 'Tests', description: 'QA et tests', status: 'todo', priority: 'Haute', progress: 0 },
-                { id: `gen-${Date.now()}-5`, title: 'Déploiement', description: 'Mise en prod', status: 'todo', priority: 'Critique', progress: 0 }
-            ],
-            testCases: isGame
-                ? ['Gameplay fonctionne', 'Collisions OK', 'Audio OK', 'Pas de crash']
-                : ['Auth fonctionne', 'Données OK', 'Responsive', 'Erreurs claires']
-        };
+        if (isGame) {
+            return {
+                concept: `${projectName} est un jeu 2D innovant qui combine des mécaniques de gameplay addictives avec un style visuel distinctif. Le core loop est centré sur une progression satisfaisante et un système de maîtrise récompensant. L'expérience est conçue pour être accessible aux nouveaux joueurs tout en offrant de la profondeur aux joueurs expérimentés.`,
+                
+                elevatorPitch: `${projectName} - Une expérience de jeu 2D où chaque session compte et chaque victoire est méritée.`,
+                
+                targetAudience: 'Joueurs casual et mid-core (16-40 ans) appréciant les jeux indépendants de qualité. Communauté Steam et itch.io. Fans de jeux à rejouabilité élevée et de challenges bien dosés. Streamers et content creators recherchant des jeux visuellement intéressants.',
+                
+                validationCriteria: 'Performance: 60 FPS constant sur GPU mid-range | Gameplay: Contrôles réactifs (input lag < 50ms) | Rétention: Première session > 30 min | Accessibilité: Remapping complet des contrôles | Stabilité: Pas de crash sur 2h de session | Audio: Mixage équilibré et non-fatiguant',
+                
+                architecture: 'Architecture basée sur un pattern Scene Manager avec transitions fluides entre les écrans. Système ECS (Entity-Component-System) pour les entités de jeu. Event Bus centralisé pour la communication inter-systèmes. Object Pooling pour les particules et projectiles. State Machine pour les états du joueur et des ennemis. Asset Manager avec chargement différé et progress tracking.',
+                
+                coreFeatures: [
+                    'Gameplay principal avec feedback satisfaisant',
+                    'Système de progression et récompenses',
+                    'Contrôles précis et responsifs',
+                    'Sauvegarde automatique et manuelle',
+                    'Options d\'accessibilité complètes',
+                    'Système audio adaptatif'
+                ],
+                
+                roadmap: [
+                    { id: `gen-${Date.now()}-1`, title: 'Game Design Document', description: 'Documentation exhaustive des mécaniques de jeu, flowcharts de progression, définition des core pillars du game design, moodboard artistique et références visuelles.', status: 'todo', priority: 'Critique', progress: 0, estimatedHours: 24 },
+                    { id: `gen-${Date.now()}-2`, title: 'Prototype - Player Controller', description: 'Implémentation du contrôleur joueur de base: mouvements, collisions, physique. Itération sur le game feel jusqu\'à obtenir des contrôles satisfaisants.', status: 'todo', priority: 'Critique', progress: 0, estimatedHours: 32 },
+                    { id: `gen-${Date.now()}-3`, title: 'Prototype - Core Mechanic', description: 'Développement et polishing de la mécanique principale différenciante. Tests utilisateurs précoces pour valider le fun factor.', status: 'todo', priority: 'Critique', progress: 0, estimatedHours: 40 },
+                    { id: `gen-${Date.now()}-4`, title: 'Camera & View System', description: 'Système de caméra avec smooth follow, screen boundaries, et effets dynamiques (shake, zoom). Configuration des zones et transitions.', status: 'todo', priority: 'Haute', progress: 0, estimatedHours: 16 },
+                    { id: `gen-${Date.now()}-5`, title: 'Art Direction & Assets', description: 'Création du style artistique définitif. Production des sprites joueur, ennemis, environnements. Animations frame-by-frame ou skeletal.', status: 'todo', priority: 'Haute', progress: 0, estimatedHours: 80 },
+                    { id: `gen-${Date.now()}-6`, title: 'Level Design', description: 'Création des premiers niveaux/zones. Design de la courbe de difficulté. Placement des éléments interactifs et secrets.', status: 'todo', priority: 'Haute', progress: 0, estimatedHours: 48 },
+                    { id: `gen-${Date.now()}-7`, title: 'Audio - Sound Effects', description: 'Création ou sourcing des effets sonores: actions joueur, feedbacks, ambiances. Intégration avec le système audio.', status: 'todo', priority: 'Haute', progress: 0, estimatedHours: 24 },
+                    { id: `gen-${Date.now()}-8`, title: 'Audio - Music', description: 'Composition ou licensing de la bande son. Création des couches musicales adaptatives. Système de transitions musicales.', status: 'todo', priority: 'Moyenne', progress: 0, estimatedHours: 32 },
+                    { id: `gen-${Date.now()}-9`, title: 'UI/UX & Menus', description: 'Design et implémentation du menu principal, pause, settings, HUD in-game. Navigation fluide et accessible.', status: 'todo', priority: 'Haute', progress: 0, estimatedHours: 32 },
+                    { id: `gen-${Date.now()}-10`, title: 'Save System', description: 'Implémentation de la sauvegarde/chargement. Gestion des slots, auto-save, cloud save si applicable.', status: 'todo', priority: 'Haute', progress: 0, estimatedHours: 16 },
+                    { id: `gen-${Date.now()}-11`, title: 'Polish & Juice', description: 'Ajout de feedback visuel: particles, screen effects, animations de transition. Amélioration du game feel global.', status: 'todo', priority: 'Moyenne', progress: 0, estimatedHours: 40 },
+                    { id: `gen-${Date.now()}-12`, title: 'Balancing & Playtests', description: 'Sessions de playtest avec métriques. Ajustement de la difficulté, économie du jeu, pacing. Itérations basées sur les retours.', status: 'todo', priority: 'Haute', progress: 0, estimatedHours: 32 },
+                    { id: `gen-${Date.now()}-13`, title: 'QA & Bug Fixing', description: 'Tests systématiques de toutes les features. Correction des bugs critiques et majeurs. Tests de régression.', status: 'todo', priority: 'Critique', progress: 0, estimatedHours: 40 },
+                    { id: `gen-${Date.now()}-14`, title: 'Optimization', description: 'Profiling performance, optimisation mémoire et GPU. Tests sur hardware cible minimum. Réduction du bundle size.', status: 'todo', priority: 'Haute', progress: 0, estimatedHours: 24 },
+                    { id: `gen-${Date.now()}-15`, title: 'Build & Release', description: 'Configuration des builds multi-plateformes. Création de la page store (Steam/itch.io). Trailer, screenshots, press kit. Soumission.', status: 'todo', priority: 'Critique', progress: 0, estimatedHours: 32 }
+                ],
+                
+                testCases: [
+                    'Le joueur peut se déplacer dans toutes les directions sans blocage',
+                    'Les collisions avec l\'environnement sont détectées correctement',
+                    'La mécanique principale fonctionne avec le feedback visuel et sonore',
+                    'Le jeu maintient 60 FPS constants avec 100 entités à l\'écran',
+                    'La sauvegarde persiste correctement entre les sessions',
+                    'Le jeu charge en moins de 5 secondes sur SSD',
+                    'Aucun crash après 2 heures de session continue',
+                    'Les options d\'accessibilité s\'appliquent immédiatement',
+                    'L\'audio se mixe correctement sans clipping',
+                    'Le jeu se pause correctement lors de la perte de focus'
+                ]
+            };
+        } else {
+            return {
+                concept: `${projectName} est une application web moderne conçue pour offrir une expérience utilisateur fluide et intuitive. Elle résout un besoin concret en simplifiant les workflows complexes et en automatisant les tâches répétitives. L'architecture est pensée pour la scalabilité et la maintenabilité à long terme.`,
+                
+                elevatorPitch: `${projectName} - Simplifiez votre quotidien avec une solution moderne qui s'adapte à vos besoins.`,
+                
+                targetAudience: 'Professionnels et équipes (25-50 ans) recherchant des outils efficaces et bien conçus. Early adopters technophiles ouverts aux nouvelles solutions. Entreprises de 10-200 employés en phase de digitalisation. Utilisateurs valorisant la productivité et l\'UX.',
+                
+                validationCriteria: 'Performance: LCP < 2.5s, FID < 100ms | Sécurité: OWASP Top 10 audité | UX: Score Lighthouse > 90 | Qualité: Test coverage > 80% | Accessibilité: WCAG 2.1 AA | Uptime: 99.5% SLA | Mobile: Fully responsive',
+                
+                architecture: 'Architecture Clean/Hexagonale séparant les couches présentation, domaine et infrastructure. API RESTful avec documentation OpenAPI. Pattern Repository pour l\'accès aux données. Event-driven pour les opérations asynchrones. Caching multi-niveaux (CDN, Redis, in-memory). Authentification JWT avec refresh tokens. Logging centralisé et monitoring temps réel.',
+                
+                coreFeatures: [
+                    'Authentification sécurisée multi-providers',
+                    'Dashboard personnalisable',
+                    'Gestion des données avec CRUD complet',
+                    'Système de notifications temps réel',
+                    'Export/Import de données',
+                    'API publique documentée',
+                    'Mode hors-ligne avec sync'
+                ],
+                
+                roadmap: [
+                    { id: `gen-${Date.now()}-1`, title: 'Architecture & Setup', description: 'Initialisation du projet avec la stack choisie. Configuration TypeScript strict, ESLint, Prettier. Structure des dossiers suivant les patterns choisis. Setup Husky pour pre-commit hooks.', status: 'todo', priority: 'Critique', progress: 0, estimatedHours: 16 },
+                    { id: `gen-${Date.now()}-2`, title: 'CI/CD Pipeline', description: 'Configuration GitHub Actions ou GitLab CI. Tests automatisés sur PR, preview deployments, production deployment sur merge. Variables d\'environnement sécurisées.', status: 'todo', priority: 'Critique', progress: 0, estimatedHours: 12 },
+                    { id: `gen-${Date.now()}-3`, title: 'Database & ORM', description: 'Modélisation du schéma de données. Configuration de l\'ORM (Prisma/TypeORM). Migrations initiales. Seed data pour le développement. Indexes et optimisations.', status: 'todo', priority: 'Critique', progress: 0, estimatedHours: 20 },
+                    { id: `gen-${Date.now()}-4`, title: 'Authentication System', description: 'Implémentation de l\'authentification: inscription, connexion, reset password, email verification. Gestion des sessions. Middleware de protection des routes.', status: 'todo', priority: 'Critique', progress: 0, estimatedHours: 32 },
+                    { id: `gen-${Date.now()}-5`, title: 'Design System', description: 'Création de la bibliothèque de composants UI. Définition des tokens (couleurs, typographie, spacing). Documentation Storybook. Thème clair/sombre.', status: 'todo', priority: 'Haute', progress: 0, estimatedHours: 40 },
+                    { id: `gen-${Date.now()}-6`, title: 'Core API Development', description: 'Développement des endpoints API principaux. Validation des inputs. Gestion des erreurs standardisée. Documentation OpenAPI/Swagger.', status: 'todo', priority: 'Critique', progress: 0, estimatedHours: 48 },
+                    { id: `gen-${Date.now()}-7`, title: 'Frontend - Pages principales', description: 'Implémentation des pages clés: dashboard, listing, détail, formulaires. Routing et navigation. State management. Gestion du loading et des erreurs.', status: 'todo', priority: 'Haute', progress: 0, estimatedHours: 56 },
+                    { id: `gen-${Date.now()}-8`, title: 'Real-time Features', description: 'Intégration WebSocket ou Server-Sent Events. Notifications temps réel. Mise à jour live des données. Gestion de la reconnexion.', status: 'todo', priority: 'Moyenne', progress: 0, estimatedHours: 24 },
+                    { id: `gen-${Date.now()}-9`, title: 'File Management', description: 'Upload de fichiers sécurisé. Stockage cloud (S3/Cloudinary). Preview et téléchargement. Gestion des quotas et formats.', status: 'todo', priority: 'Moyenne', progress: 0, estimatedHours: 20 },
+                    { id: `gen-${Date.now()}-10`, title: 'Search & Filtering', description: 'Recherche full-text avec highlight. Filtres avancés combinables. Tri multi-colonnes. Pagination performante.', status: 'todo', priority: 'Haute', progress: 0, estimatedHours: 24 },
+                    { id: `gen-${Date.now()}-11`, title: 'Email Notifications', description: 'Templates email transactionnels. Queue d\'envoi avec retry. Tracking d\'ouverture. Préférences utilisateur pour les notifications.', status: 'todo', priority: 'Moyenne', progress: 0, estimatedHours: 20 },
+                    { id: `gen-${Date.now()}-12`, title: 'Testing Suite', description: 'Tests unitaires pour la logique métier. Tests d\'intégration API avec fixtures. Tests E2E pour les parcours critiques. Mocking des services externes.', status: 'todo', priority: 'Haute', progress: 0, estimatedHours: 40 },
+                    { id: `gen-${Date.now()}-13`, title: 'Security Hardening', description: 'Audit de sécurité OWASP. Configuration CSP headers. Rate limiting. Sanitization des inputs. Encryption des données sensibles. Logs de sécurité.', status: 'todo', priority: 'Critique', progress: 0, estimatedHours: 24 },
+                    { id: `gen-${Date.now()}-14`, title: 'Performance Optimization', description: 'Analyse du bundle size. Code splitting. Lazy loading. Caching stratégie (CDN, Redis). Optimisation des requêtes DB. Compression.', status: 'todo', priority: 'Haute', progress: 0, estimatedHours: 24 },
+                    { id: `gen-${Date.now()}-15`, title: 'Monitoring & Logging', description: 'Error tracking (Sentry). Analytics utilisateur. APM et métriques custom. Alerting sur anomalies. Dashboards de monitoring.', status: 'todo', priority: 'Haute', progress: 0, estimatedHours: 16 },
+                    { id: `gen-${Date.now()}-16`, title: 'Documentation', description: 'README complet avec setup local. Documentation API interactive. Guide utilisateur. Changelog. Contributing guide.', status: 'todo', priority: 'Moyenne', progress: 0, estimatedHours: 16 },
+                    { id: `gen-${Date.now()}-17`, title: 'Launch Preparation', description: 'Environnement staging validé. Load testing. Runbook opérationnel. Plan de rollback. Backup & recovery testés. DNS et certificats SSL.', status: 'todo', priority: 'Critique', progress: 0, estimatedHours: 24 }
+                ],
+                
+                testCases: [
+                    'Un utilisateur peut s\'inscrire avec email et se connecter',
+                    'Le reset password envoie un email et permet le changement',
+                    'Les données CRUD sont persistées correctement en base',
+                    'Un utilisateur ne peut accéder qu\'à ses propres données',
+                    'L\'API retourne 401 sur les routes protégées sans auth',
+                    'La recherche retourne des résultats pertinents en < 500ms',
+                    'Les uploads de fichiers sont validés (type, taille)',
+                    'Le score Lighthouse reste > 90 sur les pages principales',
+                    'Les tests E2E passent sur les 5 parcours critiques',
+                    'Le monitoring capture et alerte sur les erreurs 500'
+                ]
+            };
+        }
     }
 }
