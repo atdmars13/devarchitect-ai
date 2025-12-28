@@ -1,8 +1,8 @@
 {
   "name": "devarchitect-ai",
   "displayName": "DevArchitect AI",
-  "description": "Outil de planification et suivi de projets avec IA locale Mistral pour code review, refactoring et analyse de sécurité",
-  "version": "0.4.0",
+  "description": "Outil de planification et suivi de projets avec IA locale Mistral - Analyse approfondie du code, code review, refactoring et analyse de sécurité",
+  "version": "0.4.1",
   "publisher": "devarchitect",
   "engines": {
     "vscode": "^1.85.0"

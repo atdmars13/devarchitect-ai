@@ -1,5 +1,41 @@
 # Changelog - Extension VS Code
 
+## [0.4.1] - 2025-12-28
+
+### 🔬 Analyse Approfondie du Code Source
+
+- **Lecture réelle des fichiers** : L'IA lit et analyse maintenant le contenu réel de chaque fichier du workspace
+- **Extraction structurelle complète** : Classes, méthodes, propriétés, fonctions, interfaces, types, constantes
+- **Détection des composants React** : Identification automatique des composants avec leurs hooks utilisés
+- **Mapping des routes API** : Détection des endpoints Express, Next.js, et autres frameworks
+- **Analyse des TODOs/FIXMEs** : Extraction automatique des tâches à faire dans le code
+
+### 📊 Collecte de Fichiers Améliorée
+
+- **50 fichiers analysés** (au lieu de 30) pour une couverture maximale
+- **Système de priorité intelligent** basé sur :
+  - Nom du fichier (extension.ts, index.ts, main.ts = priorité haute)
+  - Dossier (/services/, /api/, /controllers/ = priorité haute)
+  - Taille et contenu du fichier
+- **Fichiers de configuration** : +30 types de fichiers supportés (GraphQL, SQL, configs de test, linting, multi-langages)
+
+### 🎯 Précision Améliorée
+
+- **Temperature LLM: 0.3** pour des réponses ultra-précises
+- **10000 tokens de sortie** pour des réponses très détaillées
+- **Contexte enrichi** avec code source complet des 8 fichiers les plus importants
+- **Analyse détaillée** des 15 fichiers prioritaires avec formatage structuré
+
+### 📁 Nouveaux Types de Fichiers Collectés
+
+- Schémas GraphQL (*.graphql, *.gql)
+- Fichiers SQL de migration et schéma
+- Fichiers de types globaux TypeScript
+- Configs de test (Vitest, Jest, Playwright, Cypress)
+- Configs multi-langages (Python, Rust, Go, Java)
+
+---
+
 ## [0.4.0] - 2025-12-27
 
 ### 🧠 Intégration IA Locale Mistral

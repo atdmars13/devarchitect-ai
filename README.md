@@ -2,7 +2,7 @@
 
 🚀 **Extension VS Code pour la planification et le suivi de projets** avec IA locale Mistral/Ollama.
 
-[![Version](https://img.shields.io/badge/version-0.4.0-blue.svg)](https://github.com/devarchitect/devarchitect-ai)
+[![Version](https://img.shields.io/badge/version-0.4.1-blue.svg)](https://github.com/devarchitect/devarchitect-ai)
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.85+-green.svg)](https://code.visualstudio.com/)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-67%20passed-brightgreen.svg)](extension/src/__tests__/)
@@ -31,7 +31,16 @@ DevArchitect AI est un outil de **gestion de projet intégré** directement dans
 
 ---
 
-## ✨ Fonctionnalités v0.4.0
+## ✨ Fonctionnalités v0.4.1
+
+### 🔬 Analyse Approfondie du Code (NOUVEAU)
+
+- **Lecture réelle des fichiers** : L'IA lit et analyse le contenu réel de chaque fichier du workspace
+- **Extraction structurelle** : Classes, méthodes, fonctions, interfaces, types, constantes
+- **Détection des composants** : React components avec hooks, routes API (Express, Next.js)
+- **Priorisation intelligente** : 50 fichiers analysés, triés par importance
+- **Schémas de données** : GraphQL, Prisma, SQL migrations
+- **Précision maximale** : Temperature 0.3, 10000 tokens de sortie
 
 ### 🧠 IA Locale Mistral
 
