@@ -1,0 +1,123 @@
+# ===========================================
+# DevArchitect AI VS Code Extension - .gitignore
+# ===========================================
+
+# =====================
+# Dependencies
+# =====================
+node_modules/
+.pnpm-store/
+extension/node_modules/
+
+# =====================
+# Build outputs
+# =====================
+out/
+*.vsix
+extension/out/
+extension/webview-dist/
+
+# =====================
+# Logs
+# =====================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# =====================
+# Environment & Secrets
+# =====================
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+*.pem
+*.key
+secrets/
+
+# =====================
+# DevArchitect Project Data
+# (Contains sensitive project info - stored in VS Code globalState)
+# =====================
+.devarchitect/
+.devarchitect-reports/
+devarchitect-project.json
+
+# =====================
+# Project Data (user-specific)
+# =====================
+projects/*.json
+!projects/example-template.json
+
+# =====================
+# Editor & IDE
+# =====================
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.swp
+*~
+
+# =====================
+# OS Files
+# =====================
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# =====================
+# Testing & Coverage
+# =====================
+coverage/
+.nyc_output/
+*.lcov
+extension/coverage/
+
+# =====================
+# Ollama & IA Locale
+# =====================
+# Modèles Ollama (très volumineux)
+.ollama/
+models/
+*.gguf
+*.bin
+# Logs IA
+ai-logs/
+*.ai-cache
+
+# =====================
+# Temporary files
+# =====================
+*.local
+*.tmp
+*.temp
+.cache/
+.parcel-cache/
+
+# =====================
+# TypeScript
+# =====================
+*.tsbuildinfo
+
+# =====================
+# Misc
+# =====================
+.turbo/
+.vercel/
+.netlify/

@@ -1,0 +1,139 @@
+{
+  "id": "my-awesome-project",
+  "name": "My Awesome Project",
+  "type": "WEB_MOBILE",
+  "status": "PLANNING",
+  "lastUpdated": "2025-01-01T00:00:00.000Z",
+  "concept": "A brief description of what your project does and the problem it solves.",
+  "elevatorPitch": "One sentence that captures your project's value proposition.",
+  "history": "Background story or motivation behind the project.",
+  "targetAudience": "Who will use this project? (e.g., developers, designers, end users)",
+  "competitors": ["Competitor A", "Competitor B"],
+  "coreFeatures": [
+    "Feature 1 - Core functionality",
+    "Feature 2 - User management",
+    "Feature 3 - API integration",
+    "Feature 4 - Dashboard"
+  ],
+  "monetizationModel": "Open Source / Freemium / SaaS",
+  "marketingStrategy": "GitHub, Social Media, Community",
+  "budget": "Personal project / $X,XXX",
+  "targetLaunchDate": "2025-06-01",
+  "teamMembers": ["Developer 1", "Designer 1"],
+  "mode": "EDIT",
+  "specs": {
+    "appCategory": "Productivity",
+    "targetDevices": ["Desktop", "Mobile", "Web"],
+    "deploymentTarget": "Vercel / AWS / Self-hosted",
+    "pwaSupport": true,
+    "offlineReady": false,
+    "primaryUserRoles": ["Admin", "User", "Guest"],
+    "backendFramework": "Node.js / Express",
+    "frontendFramework": "React / Vue / Svelte",
+    "supportedLanguages": ["English", "French"],
+    "accessibilityLevel": "WCAG 2.1 AA",
+    "compliance": ["GDPR"]
+  },
+  "design": {
+    "artDirection": "Modern, clean, minimalist interface with focus on usability",
+    "uiTheme": "Light/Dark mode support",
+    "primaryColor": "#3b82f6",
+    "secondaryColor": "#8b5cf6",
+    "accentColor": "#10b981",
+    "backgroundColor": "#ffffff",
+    "fontHeading": "Inter",
+    "fontBody": "Inter"
+  },
+  "architecture": "## Project Structure\n\n```\nsrc/\n├── components/     # UI components\n├── pages/          # Page routes\n├── services/       # API & business logic\n├── hooks/          # Custom React hooks\n├── utils/          # Helper functions\n├── types/          # TypeScript types\n└── styles/         # CSS/Tailwind\n```\n\n## Tech Stack\n- Frontend: React + TypeScript\n- Styling: Tailwind CSS\n- Backend: Node.js + Express\n- Database: PostgreSQL\n- Deployment: Docker + Vercel",
+  "validationCriteria": "- All tests pass\n- No TypeScript errors\n- Lighthouse score > 90\n- Mobile responsive\n- Accessibility audit passed",
+  "testCases": [
+    "User can sign up and log in",
+    "Dashboard loads within 2 seconds",
+    "API endpoints return correct data",
+    "Form validation works correctly",
+    "Dark mode toggles properly"
+  ],
+  "roadmap": [
+    {
+      "id": "phase-1",
+      "title": "Phase 1 - Foundation",
+      "description": "Project setup, authentication, basic UI components",
+      "status": "todo",
+      "priority": "Critique",
+      "progress": 0,
+      "isMilestone": true,
+      "estimatedHours": 20
+    },
+    {
+      "id": "phase-2",
+      "title": "Phase 2 - Core Features",
+      "description": "Implement main functionality and business logic",
+      "status": "backlog",
+      "priority": "Haute",
+      "progress": 0,
+      "isMilestone": true,
+      "estimatedHours": 40,
+      "dependencies": ["phase-1"]
+    },
+    {
+      "id": "phase-3",
+      "title": "Phase 3 - Polish & Launch",
+      "description": "Testing, optimization, documentation, deployment",
+      "status": "backlog",
+      "priority": "Haute",
+      "progress": 0,
+      "isMilestone": true,
+      "estimatedHours": 20,
+      "dependencies": ["phase-2"]
+    }
+  ],
+  "assets": [
+    {
+      "id": "asset-1",
+      "name": "Logo",
+      "category": "UI_Element",
+      "status": "Concept",
+      "priority": "Haute",
+      "version": "1.0",
+      "notes": "Main logo in SVG format"
+    },
+    {
+      "id": "asset-2",
+      "name": "Design System",
+      "category": "Design_Doc",
+      "status": "Brouillon",
+      "priority": "Moyenne",
+      "version": "0.1",
+      "notes": "Colors, typography, spacing, components"
+    }
+  ],
+  "commands": [
+    {"id": "cmd-1", "label": "Install", "command": "npm install", "category": "Build"},
+    {"id": "cmd-2", "label": "Dev Server", "command": "npm run dev", "category": "Build"},
+    {"id": "cmd-3", "label": "Build", "command": "npm run build", "category": "Build"},
+    {"id": "cmd-4", "label": "Tests", "command": "npm test", "category": "Test"},
+    {"id": "cmd-5", "label": "Lint", "command": "npm run lint", "category": "Dev"},
+    {"id": "cmd-6", "label": "Type Check", "command": "npm run typecheck", "category": "Dev"}
+  ],
+  "variables": [
+    {"id": "var-1", "key": "DATABASE_URL", "value": "postgresql://user:pass@localhost:5432/db", "description": "Database connection string"},
+    {"id": "var-2", "key": "API_URL", "value": "http://localhost:3000/api", "description": "Backend API URL"},
+    {"id": "var-3", "key": "JWT_SECRET", "value": "your-secret-key", "description": "JWT signing secret"},
+    {"id": "var-4", "key": "NODE_ENV", "value": "development", "description": "Environment mode"}
+  ],
+  "faqs": [
+    {
+      "id": "faq-1",
+      "question": "How do I get started?",
+      "answer": "1. Clone the repo\n2. Run npm install\n3. Copy .env.example to .env\n4. Run npm run dev",
+      "category": "Setup"
+    },
+    {
+      "id": "faq-2",
+      "question": "How do I deploy?",
+      "answer": "Run npm run build, then deploy the dist folder to your hosting provider.",
+      "category": "Deployment"
+    }
+  ],
+  "whiteboardData": null
+}

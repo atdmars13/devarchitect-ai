@@ -1,0 +1,351 @@
+{
+  "name": "devarchitect-ai",
+  "displayName": "DevArchitect AI",
+  "description": "Outil de planification et suivi de projets avec IA locale Mistral pour code review, refactoring et analyse de sécurité",
+  "version": "0.4.0",
+  "publisher": "devarchitect",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other",
+    "Visualization",
+    "Machine Learning"
+  ],
+  "keywords": [
+    "project management",
+    "roadmap",
+    "ollama",
+    "mistral",
+    "code review",
+    "refactoring",
+    "ai",
+    "planning",
+    "game development",
+    "web development"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/devarchitect/devarchitect-ai"
+  },
+  "license": "MIT",
+  "main": "./out/extension.js",
+  "icon": "media/icon.png",
+  "contributes": {
+    "commands": [
+      {
+        "command": "devarchitect.openDashboard",
+        "title": "DevArchitect: Ouvrir le Dashboard",
+        "icon": "$(rocket)"
+      },
+      {
+        "command": "devarchitect.newProject",
+        "title": "DevArchitect: Nouveau Projet"
+      },
+      {
+        "command": "devarchitect.importProject",
+        "title": "DevArchitect: Importer Projet JSON"
+      },
+      {
+        "command": "devarchitect.exportProject",
+        "title": "DevArchitect: Exporter Projet JSON"
+      },
+      {
+        "command": "devarchitect.getProjectSummary",
+        "title": "DevArchitect: Résumé du Projet"
+      },
+      {
+        "command": "devarchitect.getProjectData",
+        "title": "DevArchitect: Données du Projet"
+      },
+      {
+        "command": "devarchitect.updateField",
+        "title": "DevArchitect: Mettre à jour un champ"
+      },
+      {
+        "command": "devarchitect.addPhase",
+        "title": "DevArchitect: Ajouter une Phase"
+      },
+      {
+        "command": "devarchitect.updatePhase",
+        "title": "DevArchitect: Mettre à jour une Phase"
+      },
+      {
+        "command": "devarchitect.deletePhase",
+        "title": "DevArchitect: Supprimer une Phase"
+      },
+      {
+        "command": "devarchitect.setPhaseProgress",
+        "title": "DevArchitect: Définir la Progression"
+      },
+      {
+        "command": "devarchitect.setPhaseStatus",
+        "title": "DevArchitect: Définir le Statut"
+      },
+      {
+        "command": "devarchitect.getPhases",
+        "title": "DevArchitect: Liste des Phases"
+      },
+      {
+        "command": "devarchitect.addAsset",
+        "title": "DevArchitect: Ajouter un Asset"
+      },
+      {
+        "command": "devarchitect.getAssets",
+        "title": "DevArchitect: Liste des Assets"
+      },
+      {
+        "command": "devarchitect.addCommand",
+        "title": "DevArchitect: Ajouter une Commande"
+      },
+      {
+        "command": "devarchitect.addVariable",
+        "title": "DevArchitect: Ajouter une Variable"
+      },
+      {
+        "command": "devarchitect.addFaq",
+        "title": "DevArchitect: Ajouter une FAQ"
+      },
+      {
+        "command": "devarchitect.bulkUpdate",
+        "title": "DevArchitect: Mise à jour globale"
+      },
+      {
+        "command": "devarchitect.analyzeWorkspace",
+        "title": "DevArchitect: Analyser le Workspace"
+      },
+      {
+        "command": "devarchitect.autoUpdateProgress",
+        "title": "DevArchitect: Mise à jour auto de la progression"
+      },
+      {
+        "command": "devarchitect.syncFromWorkspace",
+        "title": "DevArchitect: Synchroniser depuis le Workspace"
+      },
+      {
+        "command": "devarchitect.scanVariables",
+        "title": "DevArchitect: Scanner et importer les variables"
+      },
+      {
+        "command": "devarchitect.scanAssets",
+        "title": "DevArchitect: Scanner et importer les assets"
+      },
+      {
+        "command": "devarchitect.getDetectedVariables",
+        "title": "DevArchitect: Lister les variables détectées"
+      },
+      {
+        "command": "devarchitect.getDetectedAssets",
+        "title": "DevArchitect: Lister les assets détectés"
+      },
+      {
+        "command": "devarchitect.setupGitignore",
+        "title": "DevArchitect: Configurer .gitignore (sécurité)"
+      },
+      {
+        "command": "devarchitect.fullSync",
+        "title": "DevArchitect: Synchronisation Complète"
+      },
+      {
+        "command": "devarchitect.analyzeImage",
+        "title": "DevArchitect: Analyser une image (Vision AI)"
+      },
+      {
+        "command": "devarchitect.getAvailableModels",
+        "title": "DevArchitect: Lister les modèles IA disponibles"
+      },
+      {
+        "command": "devarchitect.checkAIStatus",
+        "title": "DevArchitect: Vérifier le statut de l'IA locale"
+      },
+      {
+        "command": "devarchitect.unloadModel",
+        "title": "DevArchitect: Décharger le modèle IA (libérer VRAM)",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "devarchitect.unloadAllModels",
+        "title": "DevArchitect: Décharger tous les modèles (libérer VRAM)"
+      },
+      {
+        "command": "devarchitect.getVramStatus",
+        "title": "DevArchitect: Statut VRAM des modèles chargés"
+      },
+      {
+        "command": "devarchitect.reviewCode",
+        "title": "DevArchitect: Revue de code (IA Mistral)",
+        "icon": "$(search)"
+      },
+      {
+        "command": "devarchitect.suggestRefactoring",
+        "title": "DevArchitect: Suggestions de refactoring (IA Mistral)",
+        "icon": "$(tools)"
+      },
+      {
+        "command": "devarchitect.explainCode",
+        "title": "DevArchitect: Expliquer le code (IA Mistral)",
+        "icon": "$(book)"
+      },
+      {
+        "command": "devarchitect.generateTests",
+        "title": "DevArchitect: Générer des tests (IA Mistral)",
+        "icon": "$(beaker)"
+      },
+      {
+        "command": "devarchitect.detectSecurityIssues",
+        "title": "DevArchitect: Analyse de sécurité (IA Mistral)",
+        "icon": "$(shield)"
+      },
+      {
+        "command": "devarchitect.aiComplete",
+        "title": "DevArchitect: Compléter le projet avec l'IA",
+        "icon": "$(sparkle)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "devarchitect-sidebar",
+          "title": "DevArchitect",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "devarchitect-sidebar": [
+        {
+          "type": "webview",
+          "id": "devarchitect.sidebarView",
+          "name": "Projet",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "devarchitect.openDashboard",
+          "when": "view == devarchitect.sidebarView",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "DevArchitect AI",
+      "properties": {
+        "devarchitect.autoSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Sauvegarde automatique du projet"
+        },
+        "devarchitect.projectStoragePath": {
+          "type": "string",
+          "default": ".devarchitect",
+          "description": "Chemin de stockage des données du projet"
+        },
+        "devarchitect.ollama.baseUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:11434",
+          "description": "URL du serveur Ollama pour la complétion IA locale"
+        },
+        "devarchitect.ollama.preferredModel": {
+          "type": "string",
+          "default": "mistral-nemo:12b",
+          "enum": [
+            "mistral-nemo:12b",
+            "ministral:8b",
+            "mistral:7b",
+            "codestral:latest",
+            "llama3.2-vision:11b",
+            "minicpm-v:latest",
+            "qwen2.5-coder:7b",
+            "qwen2.5-coder:14b",
+            "deepseek-coder-v2:16b"
+          ],
+          "enumDescriptions": [
+            "Mistral Nemo 12B - ⭐ Recommandé RTX 5070 Ti (~8 GB VRAM)",
+            "Ministral 8B - Très rapide et léger (~5 GB VRAM)",
+            "Mistral 7B - Ultra léger (~4 GB VRAM)",
+            "Codestral - Code spécialisé (~12 GB VRAM)",
+            "LLaMA 3.2 Vision 11B - Vision + Multimodal (~8 GB VRAM)",
+            "MiniCPM-V - Vision léger (~6 GB VRAM)",
+            "Qwen 2.5 Coder 7B - Léger (~5 GB VRAM)",
+            "Qwen 2.5 Coder 14B - Plus puissant (~10 GB VRAM)",
+            "DeepSeek Coder V2 - Alternatif (~10 GB VRAM)"
+          ],
+          "description": "Modèle Ollama préféré. Mistral Nemo 12B recommandé pour RTX 5070 Ti"
+        },
+        "devarchitect.ollama.timeout": {
+          "type": "number",
+          "default": 180000,
+          "description": "Timeout en ms pour les appels Ollama (défaut: 3 minutes)"
+        },
+        "devarchitect.ollama.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Activer la complétion IA via Ollama"
+        },
+        "devarchitect.ai.enableVision": {
+          "type": "boolean",
+          "default": true,
+          "description": "Activer l'analyse d'images avec modèles vision (pixtral, qwen2-vl)"
+        },
+        "devarchitect.ai.visionModel": {
+          "type": "string",
+          "default": "pixtral-large:latest",
+          "enum": [
+            "pixtral-large:latest",
+            "pixtral:12b",
+            "qwen2-vl:7b",
+            "llama3.2-vision:11b"
+          ],
+          "enumDescriptions": [
+            "Pixtral Large - Meilleur modèle vision Mistral",
+            "Pixtral 12B - Vision Mistral plus léger",
+            "Qwen2 VL - Vision Alibaba",
+            "Llama 3.2 Vision - Vision Meta"
+          ],
+          "description": "Modèle préféré pour l'analyse d'images"
+        },
+        "devarchitect.ai.cacheTTL": {
+          "type": "number",
+          "default": 300000,
+          "description": "Durée de vie du cache des analyses IA en ms (défaut: 5 minutes)"
+        },
+        "devarchitect.ai.temperature": {
+          "type": "number",
+          "default": 0.7,
+          "minimum": 0,
+          "maximum": 2,
+          "description": "Température pour la génération (0 = déterministe, 2 = créatif)"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile && npm run build:webview && npm run copy:webview",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "build:webview": "cd .. && npm run build",
+    "copy:webview": "node -e \"const fs=require('fs');const path=require('path');function copyDir(s,d){fs.mkdirSync(d,{recursive:true});fs.readdirSync(s).forEach(f=>{const sp=path.join(s,f),dp=path.join(d,f);fs.statSync(sp).isDirectory()?copyDir(sp,dp):fs.copyFileSync(sp,dp)})};copyDir('../dist','./webview-dist')\"",
+    "package": "vsce package",
+    "lint": "eslint src --ext ts",
+    "test": "vitest run",
+    "test:watch": "vitest watch",
+    "test:coverage": "vitest run --coverage",
+    "test:ui": "vitest --ui"
+  },
+  "devDependencies": {
+    "@types/node": "^20.x",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^6.x",
+    "@typescript-eslint/parser": "^6.x",
+    "@vitest/coverage-v8": "^3.2.4",
+    "@vitest/ui": "^3.2.4",
+    "@vscode/vsce": "^2.x",
+    "eslint": "^8.x",
+    "sharp": "^0.34.5",
+    "typescript": "^5.3.0",
+    "vitest": "^3.2.4"
+  }
+}

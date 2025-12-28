@@ -1,0 +1,26 @@
+# ===========================================
+# DevArchitect AI Extension - .gitignore
+# ===========================================
+
+# Build outputs
+out/
+*.vsix
+webview-dist/
+
+# Dependencies
+node_modules/
+
+# TypeScript
+*.tsbuildinfo
+
+# Logs
+*.log
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/*
+!.vscode/launch.json
+!.vscode/tasks.json
