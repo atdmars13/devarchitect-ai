@@ -7,10 +7,11 @@ export interface DetectedAsset {
     path: string;
     extension: string;
     size?: number;
+    lastModified?: string;
 }
 
 /**
- * Analyse détaillée du code source
+ * Analyse détaillée du code source - FACTUELLE
  */
 export interface CodeAnalysis {
     totalClasses: number;
@@ -18,11 +19,62 @@ export interface CodeAnalysis {
     totalInterfaces: number;
     totalComponents: number;
     totalHooks: number;
-    apiEndpoints: string[];
+    totalLines: number;
+    apiEndpoints: ApiEndpoint[];
     detectedPatterns: string[];
-    implementedFeatures: string[];
-    todos: string[];
+    implementedFeatures: ImplementedFeature[];
+    todos: TodoItem[];
     complexity: 'low' | 'medium' | 'high';
+    imports: ImportAnalysis;
+}
+
+export interface ApiEndpoint {
+    method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'ALL';
+    path: string;
+    file: string;
+    line: number;
+}
+
+export interface ImplementedFeature {
+    name: string;
+    type: 'component' | 'service' | 'hook' | 'api' | 'store' | 'util' | 'test';
+    file: string;
+    status: 'complete' | 'partial' | 'stub';
+}
+
+export interface TodoItem {
+    text: string;
+    file: string;
+    line: number;
+    type: 'TODO' | 'FIXME' | 'HACK' | 'BUG';
+}
+
+export interface ImportAnalysis {
+    externalPackages: string[];
+    internalModules: string[];
+    unusedImports: number;
+}
+
+/**
+ * Critères factuels pour le calcul de progression d'une phase
+ */
+export interface PhaseProgressCriteria {
+    filesRequired: string[];
+    patternsRequired: RegExp[];
+    dependenciesRequired: string[];
+    testsRequired: boolean;
+    minFiles: number;
+    weight: number;
+}
+
+/**
+ * Résultat du calcul de progression d'une phase
+ */
+export interface PhaseProgressResult {
+    progress: number;
+    status: 'backlog' | 'todo' | 'doing' | 'review' | 'done';
+    evidence: string[];
+    missingItems: string[];
 }
 
 export interface WorkspaceAnalysis {
@@ -110,8 +162,11 @@ export interface WorkspaceAnalysis {
     suggestedPhases: Array<{
         title: string;
         description: string;
-        status: 'backlog' | 'todo' | 'doing' | 'done';
+        status: 'backlog' | 'todo' | 'doing' | 'review' | 'done';
         priority: string;
+        progress?: number;
+        evidence?: string[];
+        missingItems?: string[];
     }>;
     fileStats: {
         totalFiles: number;
@@ -213,7 +268,20 @@ export class WorkspaceAnalyzerService {
             const fileStats = await this.analyzeFileStats(rootPath);
             
             // Générer les phases suggérées (avec analyse détaillée)
-            const suggestedPhases = this.generatePhases(projectType, specs, detectedFiles, packageInfo, fileStats);
+            let suggestedPhases = this.generatePhases(projectType, specs, detectedFiles, packageInfo, fileStats);
+
+            // ========== CALCUL FACTUEL DE LA PROGRESSION ==========
+            // Mettre à jour les phases avec la progression réelle basée sur l'analyse du code
+            suggestedPhases = await this.updatePhasesWithFactualProgress(
+                suggestedPhases,
+                rootPath,
+                detectedFiles,
+                packageInfo,
+                fileStats
+            );
+
+            // Analyser le code en détail pour les métriques
+            const codeAnalysis = await this.analyzeCodeDetailed(rootPath);
 
             // Générer les informations supplémentaires
             const coreFeatures = this.detectCoreFeatures(packageInfo, specs, detectedFiles);
@@ -244,7 +312,8 @@ export class WorkspaceAnalyzerService {
                 devDependencies: packageInfo?.devDependencies || [],
                 detectedFiles,
                 suggestedPhases,
-                fileStats
+                fileStats,
+                codeAnalysis
             };
             
             // Cache the result
@@ -254,7 +323,7 @@ export class WorkspaceAnalyzerService {
                 workspacePath: rootPath
             };
             
-            console.log('[WorkspaceAnalyzer] Analysis cached');
+            console.log('[WorkspaceAnalyzer] Analysis cached with factual progress');
             return analysis;
         } catch (error) {
             console.error('[WorkspaceAnalyzer] Error analyzing workspace:', error);
@@ -1413,6 +1482,717 @@ export class WorkspaceAnalyzerService {
             secondaryColor: '#8b5cf6', // violet-500
             uiTheme
         };
+    }
+
+    // ========================================
+    // ANALYSE DE CODE FACTUELLE ET DÉTAILLÉE
+    // ========================================
+
+    /**
+     * Analyse détaillée du code source - FACTUELLE
+     * Scanne les fichiers pour extraire des métriques réelles
+     */
+    public async analyzeCodeDetailed(rootPath: string): Promise<CodeAnalysis> {
+        const analysis: CodeAnalysis = {
+            totalClasses: 0,
+            totalFunctions: 0,
+            totalInterfaces: 0,
+            totalComponents: 0,
+            totalHooks: 0,
+            totalLines: 0,
+            apiEndpoints: [],
+            detectedPatterns: [],
+            implementedFeatures: [],
+            todos: [],
+            complexity: 'low',
+            imports: {
+                externalPackages: [],
+                internalModules: [],
+                unusedImports: 0
+            }
+        };
+
+        const excludePattern = '**/node_modules/**,**/.git/**,**/dist/**,**/build/**,**/out/**';
+        
+        try {
+            // Scanner les fichiers TypeScript/JavaScript
+            const codeFiles = await vscode.workspace.findFiles(
+                '**/*.{ts,tsx,js,jsx}',
+                excludePattern,
+                500
+            );
+
+            const externalPackages = new Set<string>();
+            const internalModules = new Set<string>();
+
+            for (const file of codeFiles) {
+                try {
+                    const content = await vscode.workspace.fs.readFile(file);
+                    const text = content.toString();
+                    const lines = text.split('\n');
+                    const relativePath = path.relative(rootPath, file.fsPath);
+
+                    analysis.totalLines += lines.length;
+
+                    // Analyser chaque ligne
+                    for (let i = 0; i < lines.length; i++) {
+                        const line = lines[i];
+                        const lineNum = i + 1;
+
+                        // Compter les classes
+                        if (/\bclass\s+\w+/.test(line)) {
+                            analysis.totalClasses++;
+                        }
+
+                        // Compter les fonctions
+                        if (/\b(function\s+\w+|const\s+\w+\s*=\s*(async\s*)?\([^)]*\)\s*=>)/.test(line)) {
+                            analysis.totalFunctions++;
+                        }
+
+                        // Compter les interfaces TypeScript
+                        if (/\binterface\s+\w+/.test(line)) {
+                            analysis.totalInterfaces++;
+                        }
+
+                        // Détecter les composants React
+                        if (/export\s+(default\s+)?function\s+\w+.*\(.*\).*{/.test(line) ||
+                            /export\s+(default\s+)?const\s+\w+\s*[:=].*React\.FC/.test(line) ||
+                            /return\s*\(</.test(line)) {
+                            if (!analysis.implementedFeatures.find(f => f.file === relativePath && f.type === 'component')) {
+                                const match = line.match(/(?:function|const)\s+(\w+)/);
+                                if (match && /^[A-Z]/.test(match[1])) {
+                                    analysis.totalComponents++;
+                                    analysis.implementedFeatures.push({
+                                        name: match[1],
+                                        type: 'component',
+                                        file: relativePath,
+                                        status: 'complete'
+                                    });
+                                }
+                            }
+                        }
+
+                        // Détecter les hooks React
+                        if (/\buse[A-Z]\w*\s*=\s*\(/.test(line) || /export\s+(function|const)\s+use[A-Z]/.test(line)) {
+                            const match = line.match(/\b(use[A-Z]\w*)/);
+                            if (match && !analysis.implementedFeatures.find(f => f.name === match[1])) {
+                                analysis.totalHooks++;
+                                analysis.implementedFeatures.push({
+                                    name: match[1],
+                                    type: 'hook',
+                                    file: relativePath,
+                                    status: 'complete'
+                                });
+                            }
+                        }
+
+                        // Détecter les endpoints API (Express, Fastify, etc.)
+                        const apiMatch = line.match(/\.(get|post|put|delete|patch|all)\s*\(\s*['"](\/[^'"]*)['"]/i);
+                        if (apiMatch) {
+                            analysis.apiEndpoints.push({
+                                method: apiMatch[1].toUpperCase() as any,
+                                path: apiMatch[2],
+                                file: relativePath,
+                                line: lineNum
+                            });
+                        }
+
+                        // Détecter les TODO/FIXME/HACK
+                        const todoMatch = line.match(/\/\/\s*(TODO|FIXME|HACK|BUG):?\s*(.+)/i);
+                        if (todoMatch) {
+                            analysis.todos.push({
+                                type: todoMatch[1].toUpperCase() as any,
+                                text: todoMatch[2].trim(),
+                                file: relativePath,
+                                line: lineNum
+                            });
+                        }
+
+                        // Analyser les imports
+                        const importMatch = line.match(/import\s+.*from\s+['"]([@\w][^'"]+)['"]/);
+                        if (importMatch) {
+                            const pkg = importMatch[1];
+                            if (pkg.startsWith('.') || pkg.startsWith('@/') || pkg.startsWith('~/')) {
+                                internalModules.add(pkg);
+                            } else {
+                                // Extraire le nom du package (gère @scope/package)
+                                const pkgName = pkg.startsWith('@') 
+                                    ? pkg.split('/').slice(0, 2).join('/')
+                                    : pkg.split('/')[0];
+                                externalPackages.add(pkgName);
+                            }
+                        }
+                    }
+
+                    // Détecter les services/stores
+                    if (relativePath.includes('service') || relativePath.includes('Service')) {
+                        const match = path.basename(relativePath, path.extname(relativePath));
+                        analysis.implementedFeatures.push({
+                            name: match,
+                            type: 'service',
+                            file: relativePath,
+                            status: 'complete'
+                        });
+                    }
+
+                    if (relativePath.includes('store') || relativePath.includes('Store')) {
+                        const match = path.basename(relativePath, path.extname(relativePath));
+                        analysis.implementedFeatures.push({
+                            name: match,
+                            type: 'store',
+                            file: relativePath,
+                            status: 'complete'
+                        });
+                    }
+
+                } catch {
+                    // Fichier non lisible, ignorer
+                }
+            }
+
+            analysis.imports.externalPackages = Array.from(externalPackages);
+            analysis.imports.internalModules = Array.from(internalModules);
+
+            // Calculer la complexité
+            if (analysis.totalLines > 10000 || analysis.totalClasses > 50) {
+                analysis.complexity = 'high';
+            } else if (analysis.totalLines > 3000 || analysis.totalClasses > 20) {
+                analysis.complexity = 'medium';
+            }
+
+            // Détecter les patterns
+            analysis.detectedPatterns = this.detectPatterns(analysis);
+
+        } catch (error) {
+            console.error('[WorkspaceAnalyzer] Error in code analysis:', error);
+        }
+
+        return analysis;
+    }
+
+    /**
+     * Détecte les patterns architecturaux utilisés
+     */
+    private detectPatterns(analysis: CodeAnalysis): string[] {
+        const patterns: string[] = [];
+
+        if (analysis.implementedFeatures.filter(f => f.type === 'component').length > 5) {
+            patterns.push('Component-Based Architecture');
+        }
+
+        if (analysis.implementedFeatures.filter(f => f.type === 'service').length > 2) {
+            patterns.push('Service Layer Pattern');
+        }
+
+        if (analysis.implementedFeatures.filter(f => f.type === 'store').length > 0) {
+            patterns.push('State Management (Store)');
+        }
+
+        if (analysis.implementedFeatures.filter(f => f.type === 'hook').length > 3) {
+            patterns.push('Custom Hooks Pattern');
+        }
+
+        if (analysis.apiEndpoints.length > 5) {
+            patterns.push('REST API');
+        }
+
+        if (analysis.totalInterfaces > 10) {
+            patterns.push('TypeScript Interfaces');
+        }
+
+        return patterns;
+    }
+
+    // ========================================
+    // CALCUL DE PROGRESSION FACTUELLE DES PHASES
+    // ========================================
+
+    /**
+     * Calcule la progression réelle d'une phase basée sur des critères factuels
+     */
+    public async calculatePhaseProgress(
+        phaseName: string,
+        rootPath: string,
+        detectedFiles: WorkspaceAnalysis['detectedFiles'],
+        packageInfo: any,
+        fileStats: WorkspaceAnalysis['fileStats'],
+        codeAnalysis?: CodeAnalysis
+    ): Promise<PhaseProgressResult> {
+        const result: PhaseProgressResult = {
+            progress: 0,
+            status: 'todo',
+            evidence: [],
+            missingItems: []
+        };
+
+        const allDeps = [...(packageInfo?.dependencies || []), ...(packageInfo?.devDependencies || [])];
+        const scripts = packageInfo?.scripts || {};
+        const phase = phaseName.toLowerCase();
+
+        // ========== SETUP & CONFIGURATION ==========
+        if (phase.includes('setup') || phase.includes('config') || phase.includes('initialisation')) {
+            let score = 0;
+            const maxScore = 100;
+
+            // package.json existe (20 points)
+            if (detectedFiles.hasPackageJson) {
+                score += 20;
+                result.evidence.push('✓ package.json présent');
+            } else {
+                result.missingItems.push('package.json manquant');
+            }
+
+            // TypeScript configuré (15 points)
+            if (detectedFiles.hasTsConfig) {
+                score += 15;
+                result.evidence.push('✓ TypeScript configuré');
+            } else {
+                result.missingItems.push('Configuration TypeScript manquante');
+            }
+
+            // Scripts de build présents (15 points)
+            if (scripts.build || scripts.dev || scripts.start) {
+                score += 15;
+                result.evidence.push('✓ Scripts de build configurés');
+            } else {
+                result.missingItems.push('Scripts de build manquants');
+            }
+
+            // Linting configuré (10 points)
+            if (detectedFiles.hasESLint) {
+                score += 10;
+                result.evidence.push('✓ ESLint configuré');
+            } else {
+                result.missingItems.push('ESLint non configuré');
+            }
+
+            // Prettier configuré (10 points)
+            if (detectedFiles.hasPrettier) {
+                score += 10;
+                result.evidence.push('✓ Prettier configuré');
+            } else {
+                result.missingItems.push('Prettier non configuré');
+            }
+
+            // Git hooks (10 points)
+            if (detectedFiles.hasHusky) {
+                score += 10;
+                result.evidence.push('✓ Git hooks (Husky) configurés');
+            }
+
+            // .env.example existe (10 points)
+            if (detectedFiles.hasEnvExample) {
+                score += 10;
+                result.evidence.push('✓ .env.example présent');
+            }
+
+            // README existe (10 points)
+            if (detectedFiles.hasReadme) {
+                score += 10;
+                result.evidence.push('✓ README.md présent');
+            }
+
+            result.progress = Math.min(100, Math.round((score / maxScore) * 100));
+        }
+
+        // ========== ARCHITECTURE & STRUCTURE ==========
+        else if (phase.includes('architecture') || phase.includes('structure')) {
+            let score = 0;
+            
+            // Fichiers de code présents (30 points max)
+            if (fileStats.codeFiles > 0) {
+                const codeScore = Math.min(30, fileStats.codeFiles * 2);
+                score += codeScore;
+                result.evidence.push(`✓ ${fileStats.codeFiles} fichiers de code`);
+            } else {
+                result.missingItems.push('Aucun fichier de code');
+            }
+
+            // Composants détectés (20 points)
+            if (codeAnalysis && codeAnalysis.totalComponents > 0) {
+                score += Math.min(20, codeAnalysis.totalComponents * 4);
+                result.evidence.push(`✓ ${codeAnalysis.totalComponents} composants`);
+            }
+
+            // Services/Stores (20 points)
+            if (codeAnalysis) {
+                const services = codeAnalysis.implementedFeatures.filter(f => f.type === 'service').length;
+                const stores = codeAnalysis.implementedFeatures.filter(f => f.type === 'store').length;
+                if (services + stores > 0) {
+                    score += Math.min(20, (services + stores) * 5);
+                    result.evidence.push(`✓ ${services} services, ${stores} stores`);
+                }
+            }
+
+            // Interfaces TypeScript (15 points)
+            if (codeAnalysis && codeAnalysis.totalInterfaces > 0) {
+                score += Math.min(15, codeAnalysis.totalInterfaces * 2);
+                result.evidence.push(`✓ ${codeAnalysis.totalInterfaces} interfaces TypeScript`);
+            }
+
+            // Structure de dossiers (15 points)
+            if (fileStats.componentFiles > 0) {
+                score += 15;
+                result.evidence.push('✓ Structure de composants organisée');
+            }
+
+            result.progress = Math.min(100, score);
+        }
+
+        // ========== UI / DESIGN SYSTEM ==========
+        else if (phase.includes('design') || phase.includes('ui') || phase.includes('interface')) {
+            let score = 0;
+
+            // Framework CSS (25 points)
+            if (detectedFiles.hasTailwind) {
+                score += 25;
+                result.evidence.push('✓ Tailwind CSS configuré');
+            } else if (allDeps.some(d => /styled-components|emotion|sass|chakra|material|antd/.test(d))) {
+                score += 25;
+                result.evidence.push('✓ Framework CSS détecté');
+            } else {
+                result.missingItems.push('Framework CSS non détecté');
+            }
+
+            // Fichiers de style (20 points max)
+            if (fileStats.styleFiles > 0) {
+                score += Math.min(20, fileStats.styleFiles * 2);
+                result.evidence.push(`✓ ${fileStats.styleFiles} fichiers de style`);
+            }
+
+            // Composants UI (25 points max)
+            if (codeAnalysis) {
+                const uiComponents = codeAnalysis.implementedFeatures.filter(f => 
+                    f.type === 'component' && 
+                    (f.file.includes('component') || f.file.includes('ui') || f.file.includes('common'))
+                ).length;
+                if (uiComponents > 0) {
+                    score += Math.min(25, uiComponents * 5);
+                    result.evidence.push(`✓ ${uiComponents} composants UI`);
+                }
+            }
+
+            // Storybook (15 points)
+            if (detectedFiles.hasStorybook) {
+                score += 15;
+                result.evidence.push('✓ Storybook configuré');
+            }
+
+            // Icons/Assets UI (15 points)
+            const uiAssets = await this.countFilesMatching(rootPath, '**/icons/**,**/ui/**/*.{svg,png}');
+            if (uiAssets > 0) {
+                score += 15;
+                result.evidence.push(`✓ ${uiAssets} assets UI`);
+            }
+
+            result.progress = Math.min(100, score);
+        }
+
+        // ========== BACKEND / API ==========
+        else if (phase.includes('backend') || phase.includes('api')) {
+            let score = 0;
+
+            // Framework backend détecté (25 points)
+            if (allDeps.some(d => /express|fastify|nest|koa|hono|trpc/.test(d))) {
+                score += 25;
+                result.evidence.push('✓ Framework backend détecté');
+            } else {
+                result.missingItems.push('Framework backend non détecté');
+            }
+
+            // Endpoints API (30 points max)
+            if (codeAnalysis && codeAnalysis.apiEndpoints.length > 0) {
+                score += Math.min(30, codeAnalysis.apiEndpoints.length * 5);
+                result.evidence.push(`✓ ${codeAnalysis.apiEndpoints.length} endpoints API`);
+            } else {
+                result.missingItems.push('Aucun endpoint API détecté');
+            }
+
+            // OpenAPI/Swagger (15 points)
+            if (detectedFiles.hasOpenAPI) {
+                score += 15;
+                result.evidence.push('✓ Documentation OpenAPI présente');
+            }
+
+            // Middleware/Services (15 points)
+            if (codeAnalysis) {
+                const services = codeAnalysis.implementedFeatures.filter(f => f.type === 'service').length;
+                if (services > 0) {
+                    score += Math.min(15, services * 5);
+                    result.evidence.push(`✓ ${services} services backend`);
+                }
+            }
+
+            // Validation (zod, joi, yup) (15 points)
+            if (allDeps.some(d => /zod|joi|yup|class-validator/.test(d))) {
+                score += 15;
+                result.evidence.push('✓ Validation de données configurée');
+            }
+
+            result.progress = Math.min(100, score);
+        }
+
+        // ========== BASE DE DONNÉES ==========
+        else if (phase.includes('database') || phase.includes('donnée') || phase.includes('data')) {
+            let score = 0;
+
+            // ORM/DB configuré (30 points)
+            if (detectedFiles.hasPrisma || allDeps.some(d => /prisma|typeorm|mongoose|sequelize|drizzle|knex/.test(d))) {
+                score += 30;
+                result.evidence.push('✓ ORM/DB configuré');
+            } else {
+                result.missingItems.push('ORM/Database non configuré');
+            }
+
+            // Schema Prisma ou modèles (30 points)
+            const schemaFiles = await this.countFilesMatching(rootPath, '**/{schema.prisma,*.entity.ts,*.model.ts}');
+            if (schemaFiles > 0) {
+                score += 30;
+                result.evidence.push(`✓ ${schemaFiles} fichiers de modèles/schema`);
+            }
+
+            // Migrations (20 points)
+            const migrationFiles = await this.countFilesMatching(rootPath, '**/migrations/**,**/prisma/migrations/**');
+            if (migrationFiles > 0) {
+                score += 20;
+                result.evidence.push(`✓ ${migrationFiles} migrations`);
+            }
+
+            // Seeds (20 points)
+            const seedFiles = await this.countFilesMatching(rootPath, '**/*seed*.{ts,js},**/seeds/**');
+            if (seedFiles > 0) {
+                score += 20;
+                result.evidence.push(`✓ ${seedFiles} fichiers de seed`);
+            }
+
+            result.progress = Math.min(100, score);
+        }
+
+        // ========== TESTS ==========
+        else if (phase.includes('test') || phase.includes('qualité')) {
+            let score = 0;
+
+            // Framework de test (20 points)
+            if (allDeps.some(d => /vitest|jest|mocha|cypress|playwright/.test(d))) {
+                score += 20;
+                result.evidence.push('✓ Framework de test configuré');
+            } else {
+                result.missingItems.push('Framework de test non configuré');
+            }
+
+            // Fichiers de test (40 points max)
+            if (fileStats.testFiles > 0) {
+                score += Math.min(40, fileStats.testFiles * 5);
+                result.evidence.push(`✓ ${fileStats.testFiles} fichiers de test`);
+            } else {
+                result.missingItems.push('Aucun fichier de test');
+            }
+
+            // Scripts de test (20 points)
+            if (scripts.test) {
+                score += 20;
+                result.evidence.push('✓ Script de test configuré');
+            }
+
+            // Coverage (20 points)
+            const coverageExists = await this.countFilesMatching(rootPath, '**/coverage/**,**/.nyc_output/**');
+            if (coverageExists > 0 || scripts['test:coverage']) {
+                score += 20;
+                result.evidence.push('✓ Configuration de coverage');
+            }
+
+            result.progress = Math.min(100, score);
+        }
+
+        // ========== CI/CD ==========
+        else if (phase.includes('ci') || phase.includes('cd') || phase.includes('devops') || phase.includes('pipeline')) {
+            let score = 0;
+
+            // CI/CD configuré (40 points)
+            if (detectedFiles.hasCICD) {
+                score += 40;
+                result.evidence.push('✓ Pipeline CI/CD configuré');
+            } else {
+                result.missingItems.push('Pipeline CI/CD non configuré');
+            }
+
+            // Docker (30 points)
+            if (detectedFiles.hasDockerfile) {
+                score += 30;
+                result.evidence.push('✓ Dockerfile présent');
+            }
+
+            // Docker Compose (15 points)
+            const hasCompose = await this.countFilesMatching(rootPath, '**/docker-compose*.yml');
+            if (hasCompose > 0) {
+                score += 15;
+                result.evidence.push('✓ Docker Compose configuré');
+            }
+
+            // Scripts de deploy (15 points)
+            if (scripts.deploy || scripts.release) {
+                score += 15;
+                result.evidence.push('✓ Scripts de déploiement');
+            }
+
+            result.progress = Math.min(100, score);
+        }
+
+        // ========== DOCUMENTATION ==========
+        else if (phase.includes('documentation') || phase.includes('doc')) {
+            let score = 0;
+
+            // README (30 points)
+            if (detectedFiles.hasReadme) {
+                score += 30;
+                result.evidence.push('✓ README.md présent');
+            } else {
+                result.missingItems.push('README.md manquant');
+            }
+
+            // CONTRIBUTING (20 points)
+            if (detectedFiles.hasContributing) {
+                score += 20;
+                result.evidence.push('✓ CONTRIBUTING.md présent');
+            }
+
+            // LICENSE (10 points)
+            if (detectedFiles.hasLicense) {
+                score += 10;
+                result.evidence.push('✓ LICENSE présent');
+            }
+
+            // Fichiers de documentation (20 points max)
+            if (fileStats.documentationFiles > 2) {
+                score += Math.min(20, fileStats.documentationFiles * 2);
+                result.evidence.push(`✓ ${fileStats.documentationFiles} fichiers de doc`);
+            }
+
+            // Changesets/Changelog (20 points)
+            if (detectedFiles.hasChangesets) {
+                score += 20;
+                result.evidence.push('✓ Changesets configuré');
+            } else {
+                const hasChangelog = await this.countFilesMatching(rootPath, '**/CHANGELOG.md');
+                if (hasChangelog > 0) {
+                    score += 15;
+                    result.evidence.push('✓ CHANGELOG.md présent');
+                }
+            }
+
+            result.progress = Math.min(100, score);
+        }
+
+        // ========== DÉPLOIEMENT ==========
+        else if (phase.includes('deploy') || phase.includes('production') || phase.includes('release')) {
+            let score = 0;
+
+            // Configuration de déploiement (30 points)
+            if (allDeps.some(d => /vercel|netlify|firebase|aws-sdk|azure/.test(d))) {
+                score += 30;
+                result.evidence.push('✓ Plateforme de déploiement configurée');
+            } else if (detectedFiles.hasDockerfile) {
+                score += 25;
+                result.evidence.push('✓ Docker prêt pour déploiement');
+            }
+
+            // Build de production (30 points)
+            if (scripts.build) {
+                score += 30;
+                result.evidence.push('✓ Script de build production');
+            } else {
+                result.missingItems.push('Script de build manquant');
+            }
+
+            // Variables d'environnement (20 points)
+            if (detectedFiles.hasEnvExample) {
+                score += 20;
+                result.evidence.push('✓ Variables d\'env documentées');
+            }
+
+            // CI/CD pour deploy (20 points)
+            if (detectedFiles.hasCICD) {
+                score += 20;
+                result.evidence.push('✓ CI/CD pour déploiement auto');
+            }
+
+            result.progress = Math.min(100, score);
+        }
+
+        // ========== PHASE GÉNÉRIQUE ==========
+        else {
+            // Pour les phases non reconnues, estimer à partir des fichiers
+            result.progress = Math.min(50, fileStats.codeFiles);
+            result.evidence.push(`${fileStats.codeFiles} fichiers de code détectés`);
+        }
+
+        // Déterminer le statut basé sur la progression
+        if (result.progress >= 90) {
+            result.status = 'done';
+        } else if (result.progress >= 60) {
+            result.status = 'review';
+        } else if (result.progress >= 20) {
+            result.status = 'doing';
+        } else if (result.progress > 0) {
+            result.status = 'todo';
+        } else {
+            result.status = 'backlog';
+        }
+
+        return result;
+    }
+
+    /**
+     * Helper: Compte les fichiers correspondant à un pattern
+     */
+    private async countFilesMatching(rootPath: string, pattern: string): Promise<number> {
+        try {
+            const files = await vscode.workspace.findFiles(
+                pattern,
+                '**/node_modules/**,**/.git/**',
+                100
+            );
+            return files.length;
+        } catch {
+            return 0;
+        }
+    }
+
+    /**
+     * Met à jour les phases avec la progression factuelle
+     */
+    public async updatePhasesWithFactualProgress(
+        phases: WorkspaceAnalysis['suggestedPhases'],
+        rootPath: string,
+        detectedFiles: WorkspaceAnalysis['detectedFiles'],
+        packageInfo: any,
+        fileStats: WorkspaceAnalysis['fileStats']
+    ): Promise<WorkspaceAnalysis['suggestedPhases']> {
+        // Analyser le code une seule fois
+        const codeAnalysis = await this.analyzeCodeDetailed(rootPath);
+
+        const updatedPhases = [];
+
+        for (const phase of phases) {
+            const progressResult = await this.calculatePhaseProgress(
+                phase.title,
+                rootPath,
+                detectedFiles,
+                packageInfo,
+                fileStats,
+                codeAnalysis
+            );
+
+            updatedPhases.push({
+                ...phase,
+                status: progressResult.status,
+                progress: progressResult.progress,
+                evidence: progressResult.evidence,
+                missingItems: progressResult.missingItems
+            });
+        }
+
+        return updatedPhases;
     }
 }
 

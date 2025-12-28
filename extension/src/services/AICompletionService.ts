@@ -1407,7 +1407,10 @@ Aucun projet actif. Création d'un nouveau projet.`);
                         totalFunctions: analysis.codeAnalysis?.totalFunctions || 0,
                         totalComponents: analysis.codeAnalysis?.totalComponents || 0
                     },
-                    endpoints: analysis.codeAnalysis?.apiEndpoints || [],
+                    // Convertir les ApiEndpoint en strings pour la persistance
+                    endpoints: (analysis.codeAnalysis?.apiEndpoints || []).map(
+                        ep => `${ep.method} ${ep.path}`
+                    ),
                     patterns: analysis.codeAnalysis?.detectedPatterns || []
                 };
                 

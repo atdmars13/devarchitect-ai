@@ -151,8 +151,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                     break;
 
                 case 'deleteProject':
-                    this._projectService.deleteProject(message.projectId);
-                    this._sendLibraryToWebview();
+                case 'deleteLibraryProject':
+                    {
+                        const projectId = message.projectId || (message.data as any)?.projectId;
+                        if (projectId) {
+                            this._projectService.deleteProject(projectId);
+                            this._sendLibraryToWebview();
+                            this._sendProjectToWebview(this._projectService.getCurrentProject());
+                        }
+                    }
                     break;
 
                 case 'closeProject':
@@ -222,22 +229,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
                 case 'importProject':
                     void vscode.commands.executeCommand('devarchitect.importProject');
-                    break;
-
-                case 'scanAssets':
-                    void vscode.commands.executeCommand('devarchitect.scanAssets');
-                    break;
-
-                case 'scanVars':
-                    void vscode.commands.executeCommand('devarchitect.scanVariables');
-                    break;
-
-                case 'setupGitignore':
-                    void vscode.commands.executeCommand('devarchitect.setupGitignore');
-                    break;
-
-                case 'fullSync':
-                    void vscode.commands.executeCommand('devarchitect.fullSync');
                     break;
 
                 // ========================================
@@ -1022,23 +1013,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 📥 Importer JSON
             </button>
             
-            <div style="display: flex; gap: 6px; margin-bottom: 12px;">
-                <button id="scan-assets-btn" class="btn btn-secondary" style="flex: 1; font-size: 8px;">
-                    🔍 Scan Assets
-                </button>
-                <button id="scan-vars-btn" class="btn btn-secondary" style="flex: 1; font-size: 8px;">
-                    🔑 Scan Vars
-                </button>
-            </div>
-            
-            <button id="full-sync-btn" class="btn btn-primary" style="margin-bottom: 12px; background: linear-gradient(135deg, #00f3ff, #ff00ff); border: none;">
-                🔄 Synchronisation Complète
-            </button>
-            
-            <button id="setup-gitignore-btn" class="btn btn-secondary" style="margin-bottom: 12px; background: rgba(255,200,0,0.15); border-color: rgba(255,200,0,0.4); color: #ffcc00;">
-                🔒 Sécuriser .gitignore
-            </button>
-            
             <div id="library-list"></div>
         </div>
         
@@ -1144,22 +1118,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             vscode.postMessage({ type: 'importProject' });
         });
         
-        document.getElementById('scan-assets-btn').addEventListener('click', () => {
-            vscode.postMessage({ type: 'scanAssets' });
-        });
-        
-        document.getElementById('scan-vars-btn').addEventListener('click', () => {
-            vscode.postMessage({ type: 'scanVars' });
-        });
-        
-        document.getElementById('full-sync-btn').addEventListener('click', () => {
-            vscode.postMessage({ type: 'fullSync' });
-        });
-        
-        document.getElementById('setup-gitignore-btn').addEventListener('click', () => {
-            vscode.postMessage({ type: 'setupGitignore' });
-        });
-        
         // FAQ search
         document.getElementById('faq-search').addEventListener('input', (e) => {
             faqSearchQuery = e.target.value.toLowerCase();
@@ -1243,6 +1201,18 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                 \`<span class="feature-tag">\${escapeHtml(f)}</span>\`
             ).join('');
 
+            // Assets du projet
+            const assets = project.assets || [];
+            const assetsIcons = {
+                'Sprite': '🎨', 'UI_Element': '🖼️', 'Background': '🌄', 'Audio_SFX': '🔊',
+                'Audio_Music': '🎵', 'Script': '📜', 'Mockup': '📐', 'Wireframe': '📋',
+                'Image': '🖼️', 'Video': '🎬', 'Font': '🔤', 'Icon': '💎', 'Document': '📄'
+            };
+            const assetsHtml = assets.slice(0, 4).map(asset => {
+                const icon = assetsIcons[asset.category] || '📦';
+                return \`<span class="feature-tag" style="font-size: 8px;">\${icon} \${escapeHtml(asset.name)}</span>\`;
+            }).join('');
+
             content.innerHTML = \`
                 <div class="project-card">
                     <div class="project-name">\${escapeHtml(project.name)}</div>
@@ -1290,6 +1260,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                         <div class="phases-list">\${phasesHtml}</div>
                         \${roadmap.length > 6 ? \`<div class="more-phases">+ \${roadmap.length - 6} autres phases...</div>\` : ''}
                     </div>
+                    
+                    <!-- Assets du projet -->
+                    \${assets.length > 0 ? \`
+                        <div class="features-section" style="margin-top: 8px;">
+                            <div class="section-title">🎨 Assets (\${assets.length})</div>
+                            <div class="features-list">\${assetsHtml}</div>
+                            \${assets.length > 4 ? \`<div class="more-phases">+ \${assets.length - 4} autres assets...</div>\` : ''}
+                        </div>
+                    \` : ''}
                 </div>
                 
                 <div class="action-buttons">

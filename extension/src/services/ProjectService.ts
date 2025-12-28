@@ -551,16 +551,26 @@ ${p.concept ? `\n### Concept\n_${p.concept.substring(0, 200)}${p.concept.length 
                 path: asset.path,
                 notes: `Auto-détecté (${asset.extension})`
             })),
-            roadmap: analysis.suggestedPhases.map((phase, i) => ({
-                id: `phase-${Date.now()}-${i}`,
-                title: phase.title,
-                description: phase.description,
-                status: 'todo',
-                priority: phase.priority,
-                progress: 0,
-                linkedAssets: [],
-                dependencies: []
-            })),
+            roadmap: analysis.suggestedPhases.map((phase, i) => {
+                const progress = phase.progress ?? 0;
+                return {
+                    id: `phase-${Date.now()}-${i}`,
+                    title: phase.title,
+                    description: phase.description,
+                    // Statut basé sur la progression factuelle
+                    status: progress === 100 ? 'done' : 
+                            progress >= 50 ? 'doing' : 
+                            progress >= 20 ? 'todo' : 'backlog',
+                    priority: phase.priority,
+                    // Progression factuelle calculée par l'analyseur
+                    progress: progress,
+                    linkedAssets: [],
+                    dependencies: [],
+                    // Preuves factuelles de la progression
+                    evidence: phase.evidence || [],
+                    missingItems: phase.missingItems || []
+                };
+            }),
             workspacePath: workspacePath,
             isWorkspaceLinked: true,
             lastUpdated: new Date().toISOString()
@@ -650,17 +660,27 @@ ${p.concept ? `\n### Concept\n_${p.concept.substring(0, 200)}${p.concept.length 
 
         // Mettre à jour la roadmap si vide
         if (project.roadmap.length === 0 && analysis.suggestedPhases.length > 0) {
-            project.roadmap = analysis.suggestedPhases.map((phase, i) => ({
-                id: `phase-${Date.now()}-${i}`,
-                title: phase.title,
-                description: phase.description,
-                status: 'todo',
-                priority: phase.priority,
-                progress: 0,
-                linkedAssets: [],
-                dependencies: []
-            }));
-            changes.push(`Roadmap générée avec ${analysis.suggestedPhases.length} phases`);
+            project.roadmap = analysis.suggestedPhases.map((phase, i) => {
+                const progress = phase.progress ?? 0;
+                return {
+                    id: `phase-${Date.now()}-${i}`,
+                    title: phase.title,
+                    description: phase.description,
+                    // Statut basé sur la progression factuelle
+                    status: progress === 100 ? 'done' : 
+                            progress >= 50 ? 'doing' : 
+                            progress >= 20 ? 'todo' : 'backlog',
+                    priority: phase.priority,
+                    // Progression factuelle calculée par l'analyseur
+                    progress: progress,
+                    linkedAssets: [],
+                    dependencies: [],
+                    // Preuves factuelles de la progression
+                    evidence: phase.evidence || [],
+                    missingItems: phase.missingItems || []
+                };
+            });
+            changes.push(`Roadmap générée avec ${analysis.suggestedPhases.length} phases (progression factuelle)`);
             updated = true;
         }
 
@@ -673,7 +693,7 @@ ${p.concept ? `\n### Concept\n_${p.concept.substring(0, 200)}${p.concept.length 
     }
 
     /**
-     * Met à jour la progression des phases basées sur l'analyse du workspace
+     * Met à jour la progression des phases basées sur l'analyse FACTUELLE du workspace
      */
     public async updatePhasesProgressFromWorkspace(): Promise<{ success: boolean; updatedPhases: string[] }> {
         const project = this.getCurrentProject();
@@ -683,6 +703,9 @@ ${p.concept ? `\n### Concept\n_${p.concept.substring(0, 200)}${p.concept.length 
             return { success: false, updatedPhases: [] };
         }
 
+        // Invalider le cache pour forcer une nouvelle analyse
+        WorkspaceAnalyzerService.invalidateCache();
+        
         const analyzer = new WorkspaceAnalyzerService();
         const analysis = await analyzer.analyzeWorkspace();
 
@@ -691,43 +714,44 @@ ${p.concept ? `\n### Concept\n_${p.concept.substring(0, 200)}${p.concept.length 
         }
 
         const updatedPhases: string[] = [];
-        const allDeps = [...(analysis.dependencies || []), ...(analysis.devDependencies || [])];
 
+        // Utiliser les phases analysées avec progression factuelle
         for (const phase of project.roadmap) {
-            const title = phase.title.toLowerCase();
-            let newProgress = phase.progress;
+            // Chercher la phase correspondante dans l'analyse
+            const analyzedPhase = analysis.suggestedPhases.find(
+                sp => sp.title.toLowerCase() === phase.title.toLowerCase() ||
+                      sp.title.toLowerCase().includes(phase.title.toLowerCase().split(' ')[0])
+            );
 
-            // Logique de mise à jour basée sur les fichiers détectés
-            if (title.includes('setup') || title.includes('config')) {
-                if (analysis.detectedFiles.hasPackageJson) newProgress = Math.max(newProgress, 50);
-                if (analysis.detectedFiles.hasTsConfig) newProgress = Math.max(newProgress, 70);
-                if (analysis.detectedFiles.hasDockerfile) newProgress = Math.max(newProgress, 90);
-            }
-            else if (title.includes('backend') || title.includes('api')) {
-                if (analysis.specs.backendFramework) newProgress = Math.max(newProgress, 50);
-                if (analysis.detectedFiles.hasPrisma) newProgress = Math.max(newProgress, 80);
-            }
-            else if (title.includes('frontend') || title.includes('ui')) {
-                if (analysis.specs.frontendFramework) newProgress = Math.max(newProgress, 50);
-                if (analysis.detectedFiles.hasTailwind) newProgress = Math.max(newProgress, 80);
-            }
-            else if (title.includes('test')) {
-                if (analysis.fileStats?.testFiles > 0) newProgress = Math.max(newProgress, 60);
-                if (allDeps.some(d => /jest|vitest|cypress/.test(d))) newProgress = Math.max(newProgress, 80);
-            }
-            else if (title.includes('deploy') || title.includes('docker')) {
-                if (analysis.detectedFiles.hasDockerfile) newProgress = Math.max(newProgress, 60);
-                if (analysis.specs.deploymentTarget) newProgress = Math.max(newProgress, 80);
-            }
+            if (analyzedPhase && analyzedPhase.progress !== undefined) {
+                const newProgress = analyzedPhase.progress;
+                const oldProgress = phase.progress;
 
-            // Mettre à jour si changement
-            if (newProgress !== phase.progress) {
-                this.updateRoadmapPhase(phase.id, { progress: newProgress });
-                updatedPhases.push(`${phase.title}: ${phase.progress}% → ${newProgress}%`);
+                if (newProgress !== oldProgress) {
+                    // Déterminer le nouveau statut basé sur la progression
+                    const newStatus = newProgress === 100 ? 'done' : 
+                                      newProgress >= 50 ? 'doing' : 
+                                      newProgress >= 20 ? 'todo' : 'backlog';
+
+                    this.updateRoadmapPhase(phase.id, { 
+                        progress: newProgress,
+                        status: newStatus,
+                        // @ts-ignore - extension des données de phase
+                        evidence: analyzedPhase.evidence || [],
+                        missingItems: analyzedPhase.missingItems || []
+                    });
+                    
+                    const evidenceCount = analyzedPhase.evidence?.length || 0;
+                    const missingCount = analyzedPhase.missingItems?.length || 0;
+                    updatedPhases.push(
+                        `${phase.title}: ${oldProgress}% → ${newProgress}% ` +
+                        `(${evidenceCount} preuves, ${missingCount} manquants)`
+                    );
+                }
             }
         }
 
-    return { success: true, updatedPhases };
+        return { success: true, updatedPhases };
     }
 
     /**
