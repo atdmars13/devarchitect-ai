@@ -323,11 +323,9 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile && npm run build:webview && npm run copy:webview",
+    "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "build:webview": "cd .. && npm run build",
-    "copy:webview": "node -e \"const fs=require('fs');const path=require('path');function copyDir(s,d){fs.mkdirSync(d,{recursive:true});fs.readdirSync(s).forEach(f=>{const sp=path.join(s,f),dp=path.join(d,f);fs.statSync(sp).isDirectory()?copyDir(sp,dp):fs.copyFileSync(sp,dp)})};copyDir('../dist','./webview-dist')\"",
     "package": "vsce package",
     "lint": "eslint src --ext ts",
     "test": "vitest run",
