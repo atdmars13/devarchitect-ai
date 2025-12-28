@@ -9,6 +9,22 @@ export interface DetectedAsset {
     size?: number;
 }
 
+/**
+ * Analyse détaillée du code source
+ */
+export interface CodeAnalysis {
+    totalClasses: number;
+    totalFunctions: number;
+    totalInterfaces: number;
+    totalComponents: number;
+    totalHooks: number;
+    apiEndpoints: string[];
+    detectedPatterns: string[];
+    implementedFeatures: string[];
+    todos: string[];
+    complexity: 'low' | 'medium' | 'high';
+}
+
 export interface WorkspaceAnalysis {
     name: string;
     type: 'WEB_MOBILE' | 'GAME_2D';
@@ -31,6 +47,15 @@ export interface WorkspaceAnalysis {
         supportedLanguages?: string[];
         pwaSupport?: boolean;
         offlineReady?: boolean;
+        // Nouvelles détections
+        cssFramework?: string;
+        stateManagement?: string;
+        orm?: string;
+        testingFramework?: string;
+        bundler?: string;
+        runtimeEnvironment?: string;
+        apiStyle?: string;
+        authentication?: string;
     };
     design: {
         primaryColor?: string;
@@ -65,6 +90,22 @@ export interface WorkspaceAnalysis {
         hasTests: boolean;
         hasCICD: boolean;
         hasVSCodeExtension: boolean;
+        // Nouvelles détections
+        hasMonorepo: boolean;
+        hasStorybook: boolean;
+        hasOpenAPI: boolean;
+        hasI18n: boolean;
+        hasPWA: boolean;
+        hasSSR: boolean;
+        hasWebpack: boolean;
+        hasVite: boolean;
+        hasESLint: boolean;
+        hasPrettier: boolean;
+        hasHusky: boolean;
+        hasChangesets: boolean;
+        hasEnvExample: boolean;
+        hasLicense: boolean;
+        hasContributing: boolean;
     };
     suggestedPhases: Array<{
         title: string;
@@ -77,7 +118,13 @@ export interface WorkspaceAnalysis {
         codeFiles: number;
         testFiles: number;
         componentFiles: number;
+        // Nouvelles stats
+        configFiles: number;
+        documentationFiles: number;
+        styleFiles: number;
     };
+    // Nouvelle analyse de code
+    codeAnalysis?: CodeAnalysis;
 }
 
 interface CachedAnalysis {
@@ -232,19 +279,134 @@ export class WorkspaceAnalyzerService {
             return files.length > 0;
         };
 
+        // Détections parallèles pour de meilleures performances
+        const [
+            hasPackageJson,
+            hasDockerfile,
+            hasDockerCompose,
+            hasReadme,
+            hasReadmeLower,
+            hasTsConfig,
+            hasUnityProject,
+            hasGodotProject,
+            hasPrisma,
+            hasPrismaPattern,
+            hasGraphQL,
+            hasGql,
+            hasTailwindJs,
+            hasTailwindTs,
+            hasTestsTest,
+            hasTestsSpec,
+            hasGithubWorkflows,
+            hasGitlabCI,
+            hasAzurePipelines,
+            hasVSCodeExt,
+            hasExtensionTs,
+            // Nouveaux détecteurs
+            hasLernaJson,
+            hasPnpmWorkspace,
+            hasNxJson,
+            hasTurboJson,
+            hasStorybookDir,
+            hasOpenApiYaml,
+            hasSwaggerJson,
+            hasI18nDir,
+            hasLocalesDir,
+            hasManifestJson,
+            hasServiceWorker,
+            hasNextConfig,
+            hasNuxtConfig,
+            hasWebpackConfig,
+            hasViteConfig,
+            hasEslintConfig,
+            hasEslintConfigJs,
+            hasPrettierConfig,
+            hasPrettierRc,
+            hasHuskyDir,
+            hasChangesetsDir,
+            hasEnvExample,
+            hasLicense,
+            hasContributing,
+            hasContributingEn
+        ] = await Promise.all([
+            checkFile('package.json'),
+            checkFile('Dockerfile'),
+            checkFile('docker-compose.yml'),
+            checkFile('README.md'),
+            checkFile('readme.md'),
+            checkFile('tsconfig.json'),
+            checkPattern('**/*.unity'),
+            checkPattern('**/*.godot'),
+            checkFile('prisma/schema.prisma'),
+            checkPattern('**/schema.prisma'),
+            checkPattern('**/*.graphql'),
+            checkPattern('**/*.gql'),
+            checkFile('tailwind.config.js'),
+            checkFile('tailwind.config.ts'),
+            checkPattern('**/*.test.{ts,tsx,js,jsx}'),
+            checkPattern('**/*.spec.{ts,tsx,js,jsx}'),
+            checkFile('.github/workflows'),
+            checkFile('.gitlab-ci.yml'),
+            checkFile('azure-pipelines.yml'),
+            checkFile('extension/package.json'),
+            checkPattern('**/extension.ts'),
+            // Nouveaux détecteurs
+            checkFile('lerna.json'),
+            checkFile('pnpm-workspace.yaml'),
+            checkFile('nx.json'),
+            checkFile('turbo.json'),
+            checkFile('.storybook'),
+            checkFile('openapi.yaml'),
+            checkFile('swagger.json'),
+            checkFile('i18n'),
+            checkFile('locales'),
+            checkFile('manifest.json'),
+            checkPattern('**/service-worker.{js,ts}'),
+            checkFile('next.config.js'),
+            checkFile('nuxt.config.ts'),
+            checkFile('webpack.config.js'),
+            checkFile('vite.config.ts'),
+            checkFile('.eslintrc.json'),
+            checkFile('eslint.config.js'),
+            checkFile('.prettierrc'),
+            checkFile('prettier.config.js'),
+            checkFile('.husky'),
+            checkFile('.changeset'),
+            checkFile('.env.example'),
+            checkFile('LICENSE'),
+            checkFile('CONTRIBUTING.md'),
+            checkFile('CONTRIBUTING.en.md')
+        ]);
+
         return {
-            hasPackageJson: await checkFile('package.json'),
-            hasDockerfile: await checkFile('Dockerfile') || await checkFile('docker-compose.yml'),
-            hasReadme: await checkFile('README.md') || await checkFile('readme.md'),
-            hasTsConfig: await checkFile('tsconfig.json'),
-            hasUnityProject: await checkPattern('**/*.unity') || await checkFile('ProjectSettings/ProjectSettings.asset'),
-            hasGodotProject: await checkPattern('**/*.godot') || await checkFile('project.godot'),
-            hasPrisma: await checkFile('prisma/schema.prisma') || await checkPattern('**/schema.prisma'),
-            hasGraphQL: await checkPattern('**/*.graphql') || await checkPattern('**/*.gql'),
-            hasTailwind: await checkFile('tailwind.config.js') || await checkFile('tailwind.config.ts'),
-            hasTests: await checkPattern('**/*.test.{ts,tsx,js,jsx}') || await checkPattern('**/*.spec.{ts,tsx,js,jsx}'),
-            hasCICD: await checkFile('.github/workflows') || await checkFile('.gitlab-ci.yml') || await checkFile('azure-pipelines.yml'),
-            hasVSCodeExtension: await checkFile('extension/package.json') || await checkPattern('**/extension.ts')
+            hasPackageJson,
+            hasDockerfile: hasDockerfile || hasDockerCompose,
+            hasReadme: hasReadme || hasReadmeLower,
+            hasTsConfig,
+            hasUnityProject: hasUnityProject || await checkFile('ProjectSettings/ProjectSettings.asset'),
+            hasGodotProject: hasGodotProject || await checkFile('project.godot'),
+            hasPrisma: hasPrisma || hasPrismaPattern,
+            hasGraphQL: hasGraphQL || hasGql,
+            hasTailwind: hasTailwindJs || hasTailwindTs,
+            hasTests: hasTestsTest || hasTestsSpec,
+            hasCICD: hasGithubWorkflows || hasGitlabCI || hasAzurePipelines,
+            hasVSCodeExtension: hasVSCodeExt || hasExtensionTs,
+            // Nouveaux champs
+            hasMonorepo: hasLernaJson || hasPnpmWorkspace || hasNxJson || hasTurboJson,
+            hasStorybook: hasStorybookDir,
+            hasOpenAPI: hasOpenApiYaml || hasSwaggerJson,
+            hasI18n: hasI18nDir || hasLocalesDir,
+            hasPWA: hasManifestJson || hasServiceWorker,
+            hasSSR: hasNextConfig || hasNuxtConfig,
+            hasWebpack: hasWebpackConfig,
+            hasVite: hasViteConfig,
+            hasESLint: hasEslintConfig || hasEslintConfigJs,
+            hasPrettier: hasPrettierConfig || hasPrettierRc,
+            hasHusky: hasHuskyDir,
+            hasChangesets: hasChangesetsDir,
+            hasEnvExample: hasEnvExample,
+            hasLicense: hasLicense,
+            hasContributing: hasContributing || hasContributingEn
         };
     }
 
@@ -520,6 +682,7 @@ export class WorkspaceAnalyzerService {
             specs.frontendFramework = 'React';
             if (allDeps.includes('next')) specs.frontendFramework = 'Next.js';
             if (allDeps.includes('gatsby')) specs.frontendFramework = 'Gatsby';
+            if (allDeps.includes('remix')) specs.frontendFramework = 'Remix';
         } else if (allDeps.includes('vue')) {
             specs.frontendFramework = 'Vue.js';
             if (allDeps.includes('nuxt')) specs.frontendFramework = 'Nuxt.js';
@@ -527,6 +690,13 @@ export class WorkspaceAnalyzerService {
             specs.frontendFramework = 'Angular';
         } else if (allDeps.includes('svelte')) {
             specs.frontendFramework = 'Svelte';
+            if (allDeps.includes('@sveltejs/kit')) specs.frontendFramework = 'SvelteKit';
+        } else if (allDeps.includes('solid-js')) {
+            specs.frontendFramework = 'SolidJS';
+        } else if (allDeps.includes('astro')) {
+            specs.frontendFramework = 'Astro';
+        } else if (allDeps.includes('qwik') || allDeps.includes('@builder.io/qwik')) {
+            specs.frontendFramework = 'Qwik';
         }
 
         // Backend Detection
@@ -538,6 +708,132 @@ export class WorkspaceAnalyzerService {
             specs.backendFramework = 'NestJS';
         } else if (allDeps.includes('hono')) {
             specs.backendFramework = 'Hono';
+        } else if (allDeps.includes('koa')) {
+            specs.backendFramework = 'Koa';
+        } else if (allDeps.includes('@trpc/server')) {
+            specs.backendFramework = 'tRPC';
+        } else if (allDeps.includes('elysia')) {
+            specs.backendFramework = 'Elysia';
+        }
+
+        // CSS Framework Detection
+        if (detectedFiles.hasTailwind) {
+            specs.cssFramework = 'Tailwind CSS';
+        } else if (allDeps.includes('styled-components')) {
+            specs.cssFramework = 'Styled Components';
+        } else if (allDeps.includes('@emotion/react') || allDeps.includes('@emotion/styled')) {
+            specs.cssFramework = 'Emotion';
+        } else if (allDeps.includes('sass') || allDeps.includes('node-sass')) {
+            specs.cssFramework = 'Sass/SCSS';
+        } else if (allDeps.includes('@chakra-ui/react')) {
+            specs.cssFramework = 'Chakra UI';
+        } else if (allDeps.includes('@mui/material') || allDeps.includes('@material-ui/core')) {
+            specs.cssFramework = 'Material UI';
+        } else if (allDeps.includes('antd')) {
+            specs.cssFramework = 'Ant Design';
+        } else if (allDeps.includes('bootstrap')) {
+            specs.cssFramework = 'Bootstrap';
+        } else if (allDeps.includes('shadcn') || allDeps.some(d => d.includes('radix-ui'))) {
+            specs.cssFramework = 'Radix UI / shadcn';
+        }
+
+        // State Management Detection
+        if (allDeps.includes('zustand')) {
+            specs.stateManagement = 'Zustand';
+        } else if (allDeps.includes('@reduxjs/toolkit') || allDeps.includes('redux')) {
+            specs.stateManagement = 'Redux';
+        } else if (allDeps.includes('recoil')) {
+            specs.stateManagement = 'Recoil';
+        } else if (allDeps.includes('jotai')) {
+            specs.stateManagement = 'Jotai';
+        } else if (allDeps.includes('mobx')) {
+            specs.stateManagement = 'MobX';
+        } else if (allDeps.includes('pinia')) {
+            specs.stateManagement = 'Pinia';
+        } else if (allDeps.includes('vuex')) {
+            specs.stateManagement = 'Vuex';
+        } else if (allDeps.includes('xstate')) {
+            specs.stateManagement = 'XState';
+        }
+
+        // ORM/Database Detection
+        if (allDeps.includes('@prisma/client') || detectedFiles.hasPrisma) {
+            specs.orm = 'Prisma';
+        } else if (allDeps.includes('typeorm')) {
+            specs.orm = 'TypeORM';
+        } else if (allDeps.includes('sequelize')) {
+            specs.orm = 'Sequelize';
+        } else if (allDeps.includes('mongoose')) {
+            specs.orm = 'Mongoose';
+        } else if (allDeps.includes('drizzle-orm')) {
+            specs.orm = 'Drizzle';
+        } else if (allDeps.includes('knex')) {
+            specs.orm = 'Knex';
+        } else if (allDeps.includes('@supabase/supabase-js')) {
+            specs.orm = 'Supabase';
+        }
+
+        // Testing Framework Detection
+        if (allDeps.includes('vitest')) {
+            specs.testingFramework = 'Vitest';
+        } else if (allDeps.includes('jest')) {
+            specs.testingFramework = 'Jest';
+        } else if (allDeps.includes('mocha')) {
+            specs.testingFramework = 'Mocha';
+        } else if (allDeps.includes('@playwright/test')) {
+            specs.testingFramework = 'Playwright';
+        } else if (allDeps.includes('cypress')) {
+            specs.testingFramework = 'Cypress';
+        }
+
+        // Bundler Detection
+        if (detectedFiles.hasVite) {
+            specs.bundler = 'Vite';
+        } else if (detectedFiles.hasWebpack) {
+            specs.bundler = 'Webpack';
+        } else if (allDeps.includes('esbuild')) {
+            specs.bundler = 'esbuild';
+        } else if (allDeps.includes('turbopack')) {
+            specs.bundler = 'Turbopack';
+        } else if (allDeps.includes('rollup')) {
+            specs.bundler = 'Rollup';
+        } else if (allDeps.includes('parcel')) {
+            specs.bundler = 'Parcel';
+        }
+
+        // Runtime Environment Detection
+        if (allDeps.includes('bun')) {
+            specs.runtimeEnvironment = 'Bun';
+        } else if (allDeps.includes('deno')) {
+            specs.runtimeEnvironment = 'Deno';
+        } else {
+            specs.runtimeEnvironment = 'Node.js';
+        }
+
+        // API Style Detection
+        if (detectedFiles.hasGraphQL || allDeps.includes('graphql') || allDeps.includes('@apollo/server')) {
+            specs.apiStyle = 'GraphQL';
+        } else if (allDeps.includes('@trpc/server')) {
+            specs.apiStyle = 'tRPC';
+        } else if (detectedFiles.hasOpenAPI) {
+            specs.apiStyle = 'REST (OpenAPI)';
+        } else if (allDeps.includes('express') || allDeps.includes('fastify') || allDeps.includes('hono')) {
+            specs.apiStyle = 'REST';
+        }
+
+        // Authentication Detection
+        if (allDeps.includes('next-auth') || allDeps.includes('@auth/core')) {
+            specs.authentication = 'NextAuth.js';
+        } else if (allDeps.includes('passport')) {
+            specs.authentication = 'Passport.js';
+        } else if (allDeps.includes('@auth0/auth0-react') || allDeps.includes('auth0')) {
+            specs.authentication = 'Auth0';
+        } else if (allDeps.includes('@clerk/clerk-sdk-node') || allDeps.includes('@clerk/nextjs')) {
+            specs.authentication = 'Clerk';
+        } else if (allDeps.includes('firebase') || allDeps.includes('firebase-admin')) {
+            specs.authentication = 'Firebase Auth';
+        } else if (allDeps.includes('@supabase/supabase-js')) {
+            specs.authentication = 'Supabase Auth';
         }
 
         // Game Engine Detection
@@ -545,6 +841,14 @@ export class WorkspaceAnalyzerService {
             specs.gameEngine = 'Phaser';
         } else if (allDeps.includes('pixi.js') || allDeps.includes('pixijs')) {
             specs.gameEngine = 'PixiJS';
+        } else if (allDeps.includes('three')) {
+            specs.gameEngine = 'Three.js';
+        } else if (allDeps.includes('@babylonjs/core')) {
+            specs.gameEngine = 'Babylon.js';
+        } else if (allDeps.includes('kaboom')) {
+            specs.gameEngine = 'Kaboom.js';
+        } else if (allDeps.includes('excalibur')) {
+            specs.gameEngine = 'Excalibur';
         }
 
         // Deployment Detection
@@ -552,9 +856,19 @@ export class WorkspaceAnalyzerService {
             specs.deploymentTarget = 'Vercel';
         } else if (allDeps.includes('netlify-cli')) {
             specs.deploymentTarget = 'Netlify';
+        } else if (allDeps.includes('@azure/functions')) {
+            specs.deploymentTarget = 'Azure Functions';
+        } else if (allDeps.includes('aws-sdk') || allDeps.includes('@aws-sdk/client-lambda')) {
+            specs.deploymentTarget = 'AWS';
+        } else if (allDeps.includes('firebase-functions')) {
+            specs.deploymentTarget = 'Firebase';
         } else if (detectedFiles.hasDockerfile) {
             specs.deploymentTarget = 'Docker';
         }
+
+        // PWA/Offline support
+        specs.pwaSupport = detectedFiles.hasPWA;
+        specs.offlineReady = allDeps.includes('workbox') || allDeps.includes('workbox-webpack-plugin');
 
         return specs;
     }
@@ -658,7 +972,7 @@ export class WorkspaceAnalyzerService {
                     priority: 'Haute'
                 },
                 {
-                    title: 'Int�gration IA Locale (Mistral/Ollama)',
+                    title: 'Int�gration IA Locale (Mistral/Ollama)',
                     description: `S’assurer que @devarchitect peut modifier le projet via /sync, /plan, /add, et que les commandes VS Code exposées couvrent 100% des besoins (bulkUpdate, phases, assets, variables, fullSync).`,
                     status: 'todo',
                     priority: 'Haute'
@@ -791,16 +1105,26 @@ export class WorkspaceAnalyzerService {
     private async analyzeFileStats(_rootPath: string): Promise<WorkspaceAnalysis['fileStats']> {
         const excludePattern = '**/node_modules/**,**/.git/**,**/dist/**,**/build/**';
         
-        const allFiles = await vscode.workspace.findFiles('**/*', excludePattern, 5000);
-        const codeFiles = await vscode.workspace.findFiles('**/*.{ts,tsx,js,jsx,py,java,cs,go,rs}', excludePattern, 5000);
-        const testFiles = await vscode.workspace.findFiles('**/*.{test,spec}.{ts,tsx,js,jsx}', excludePattern, 1000);
-        const componentFiles = await vscode.workspace.findFiles('**/components/**/*.{tsx,jsx,vue,svelte}', excludePattern, 1000);
+        // Détection parallèle pour de meilleures performances
+        const [allFiles, codeFiles, testFiles, componentFiles, configFiles, docFiles, styleFiles] = await Promise.all([
+            vscode.workspace.findFiles('**/*', excludePattern, 5000),
+            vscode.workspace.findFiles('**/*.{ts,tsx,js,jsx,py,java,cs,go,rs,rb,php,swift,kt}', excludePattern, 5000),
+            vscode.workspace.findFiles('**/*.{test,spec}.{ts,tsx,js,jsx}', excludePattern, 1000),
+            vscode.workspace.findFiles('**/components/**/*.{tsx,jsx,vue,svelte}', excludePattern, 1000),
+            // Nouvelles détections
+            vscode.workspace.findFiles('**/*.{json,yaml,yml,toml,ini,env}', excludePattern, 500),
+            vscode.workspace.findFiles('**/*.{md,mdx,txt,rst,adoc}', excludePattern, 500),
+            vscode.workspace.findFiles('**/*.{css,scss,sass,less,styl,pcss}', excludePattern, 500)
+        ]);
 
         return {
             totalFiles: allFiles.length,
             codeFiles: codeFiles.length,
             testFiles: testFiles.length,
-            componentFiles: componentFiles.length
+            componentFiles: componentFiles.length,
+            configFiles: configFiles.length,
+            documentationFiles: docFiles.length,
+            styleFiles: styleFiles.length
         };
     }
 

@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { WorkspaceAnalyzerService, WorkspaceAnalysis } from './WorkspaceAnalyzerService';
+import { PersistenceService, CompletionHistoryEntry, UserFeedback } from './PersistenceService';
 
 export interface AICompletionResult {
     name?: string;
@@ -114,6 +115,7 @@ export interface SecurityIssue {
 
 export class AICompletionService {
     private workspaceAnalyzer: WorkspaceAnalyzerService;
+    private persistenceService: PersistenceService;
     
     // Cache pour les résultats d'analyse IA (évite les appels répétés)
     private static analysisCache: Map<string, { result: AICompletionResult; timestamp: number }> = new Map();
@@ -192,6 +194,50 @@ export class AICompletionService {
 
     constructor() {
         this.workspaceAnalyzer = new WorkspaceAnalyzerService();
+        this.persistenceService = PersistenceService.getInstance();
+    }
+
+    /**
+     * Enregistre un feedback utilisateur pour une complétion
+     * @param completionId ID de la complétion
+     * @param rating Note de 1 à 5
+     * @param approved Champs approuvés
+     * @param rejected Champs rejetés
+     * @param comments Commentaires de l'utilisateur
+     */
+    public recordFeedback(
+        completionId: string,
+        rating: 1 | 2 | 3 | 4 | 5,
+        approved: string[] = [],
+        rejected: string[] = [],
+        comments?: string
+    ): string {
+        const feedback: Omit<UserFeedback, 'id' | 'timestamp'> = {
+            completionId,
+            rating,
+            approved,
+            rejected,
+            comments
+        };
+        return this.persistenceService.recordFeedback(feedback);
+    }
+
+    /**
+     * Obtient les statistiques de complétion
+     */
+    public getCompletionStats(): { 
+        totalCompletions: number; 
+        successfulCompletions: number;
+        averageCompletionTime: number; 
+        mostUsedModel: string;
+        successRate: number;
+    } {
+        const stats = this.persistenceService.getStatistics();
+        const successRate = this.persistenceService.getSuccessRate();
+        return {
+            ...stats,
+            successRate
+        };
     }
 
     /**
@@ -1235,13 +1281,15 @@ Aucun projet actif. Création d'un nouveau projet.`);
     }
     
     /**
-     * Complétion avec IA (Ollama) - Contexte enrichi
+     * Complétion avec IA (Ollama) - Contexte enrichi avec VRAI code source
      */
     private async completeWithAI(
         currentProject: any, 
         analysis: WorkspaceAnalysis | null,
         model: string
     ): Promise<AICompletionResult> {
+        const startTime = Date.now();
+        
         // Vérifier le cache
         const cacheKey = `complete_${currentProject?.id || 'new'}_${analysis?.name || 'noWorkspace'}`;
         const cached = AICompletionService.analysisCache.get(cacheKey);
@@ -1250,8 +1298,31 @@ Aucun projet actif. Création d'un nouveau projet.`);
             return cached.result;
         }
         
-        // Construire le contexte enrichi
-        const enrichedContext = this.buildEnrichedContext(currentProject, analysis);
+        // === ANALYSE PROFONDE: Collecter et lire le code source réel ===
+        console.log('[AICompletionService] Starting deep project analysis...');
+        
+        // 1. Collecter les fichiers de configuration et documentation importants
+        const configFiles = await this.collectImportantConfigFiles();
+        console.log(`[AICompletionService] Collected ${configFiles.length} config/doc files`);
+        
+        // 2. Collecter les fichiers de code source (augmenté à 50 pour une analyse complète)
+        const projectFiles = await this.collectProjectFiles(50);
+        console.log(`[AICompletionService] Collected ${projectFiles.length} source code files`);
+        
+        // 3. Générer l'analyse structurelle complète
+        const codeAnalysis = this.analyzeCodeStructure(projectFiles);
+        
+        // 4. Générer le contexte avec le CODE SOURCE RÉEL et analyse en profondeur
+        const realCodeContext = this.buildRealCodeContext(configFiles, projectFiles, codeAnalysis);
+        
+        console.log(`[AICompletionService] Analysis complete: ${codeAnalysis.totalClasses} classes, ${codeAnalysis.totalFunctions} functions, ${codeAnalysis.apiEndpoints.length} endpoints, ${codeAnalysis.detectedPatterns.length} patterns`);
+        console.log(`[AICompletionService] Features detected: ${codeAnalysis.implementedFeatures.join(', ')}`);
+        
+        // Construire le contexte enrichi avec le code source RÉEL
+        const enrichedContext = this.buildEnrichedContextWithRealCode(currentProject, analysis, realCodeContext, codeAnalysis);
+        
+        // Log la taille du contexte pour debug
+        console.log(`[AICompletionService] Context size: ${enrichedContext.length} characters`);
         
         // Adapter les instructions au modèle
         const modelInfo = this.getModelInfo(model);
@@ -1261,7 +1332,7 @@ Aucun projet actif. Création d'un nouveau projet.`);
         const projectType = analysis?.type || currentProject?.type || 'WEB_MOBILE';
         const isGame = projectType === 'GAME_2D';
         
-        // Construire le prompt spécialisé
+        // Construire le prompt spécialisé avec le code analysé
         const prompt = this.buildAdvancedCompletionPrompt(
             enrichedContext, 
             currentProject, 
@@ -1271,14 +1342,15 @@ Aucun projet actif. Création d'un nouveau projet.`);
         );
 
         const response = await this.generateWithOllama(prompt, model, { 
-            temperature: 0.6, 
-            num_predict: 6000 
+            temperature: 0.3, // Température très basse pour précision maximale basée sur le code réel
+            num_predict: 10000 // Plus de tokens pour des réponses très détaillées
         });
         
-        // Log pour debug
-        console.log(`[AICompletionService] Model used: ${model}, Response length: ${response.length}`);
+        const endTime = Date.now();
+        const duration = endTime - startTime;
         
-        // Mettre en cache le résultat avant parsing
+        // Log pour debug
+        console.log(`[AICompletionService] Model used: ${model}, Response length: ${response.length}, Duration: ${duration}ms`);
         
         // Parser la réponse JSON
         try {
@@ -1300,13 +1372,292 @@ Aucun projet actif. Création d'un nouveau projet.`);
             const result = this.mergeWithAnalysis(parsed, analysis, currentProject);
             AICompletionService.analysisCache.set(cacheKey, { result, timestamp: Date.now() });
             
+            // === PERSISTANCE: Enregistrer la complétion réussie ===
+            const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+            const completionEntry: Omit<CompletionHistoryEntry, 'id' | 'timestamp'> = {
+                workspacePath,
+                projectName: result.name || analysis?.name || 'Unknown',
+                model,
+                duration,
+                success: true,
+                fieldsCompleted: Object.keys(result).filter(k => result[k as keyof AICompletionResult] !== undefined),
+                phasesGenerated: result.roadmap?.length || 0
+            };
+            this.persistenceService.recordCompletion(completionEntry);
+            
+            // Sauvegarder l'analyse dans le cache persistant
+            if (analysis && workspacePath) {
+                // Convertir WorkspaceAnalysis en PersistedAnalysis['analysis']
+                const persistedAnalysis = {
+                    projectType: analysis.type,
+                    dependencies: analysis.dependencies,
+                    devDependencies: analysis.devDependencies,
+                    detectedFrameworks: [
+                        analysis.specs?.frontendFramework,
+                        analysis.specs?.backendFramework,
+                        analysis.specs?.gameEngine,
+                        analysis.specs?.cssFramework
+                    ].filter((f): f is string => !!f),
+                    detectedFeatures: analysis.coreFeatures || [],
+                    codeMetrics: {
+                        totalFiles: analysis.fileStats?.totalFiles || 0,
+                        codeFiles: analysis.fileStats?.codeFiles || 0,
+                        testFiles: analysis.fileStats?.testFiles || 0,
+                        totalClasses: analysis.codeAnalysis?.totalClasses || 0,
+                        totalFunctions: analysis.codeAnalysis?.totalFunctions || 0,
+                        totalComponents: analysis.codeAnalysis?.totalComponents || 0
+                    },
+                    endpoints: analysis.codeAnalysis?.apiEndpoints || [],
+                    patterns: analysis.codeAnalysis?.detectedPatterns || []
+                };
+                
+                this.persistenceService.saveAnalysis(
+                    workspacePath,
+                    analysis.name,
+                    analysis.dependencies,
+                    analysis.devDependencies,
+                    persistedAnalysis
+                );
+            }
+            
             // Fusionner avec l'analyse du workspace
             return result;
         } catch (parseError) {
             console.error('Failed to parse AI response:', parseError);
+            
+            // === PERSISTANCE: Enregistrer l'échec ===
+            const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+            const failedEntry: Omit<CompletionHistoryEntry, 'id' | 'timestamp'> = {
+                workspacePath,
+                projectName: analysis?.name || 'Unknown',
+                model,
+                duration: Date.now() - startTime,
+                success: false,
+                fieldsCompleted: [],
+                phasesGenerated: 0,
+                error: parseError instanceof Error ? parseError.message : 'Parse error'
+            };
+            this.persistenceService.recordCompletion(failedEntry);
+            
             // Fallback to workspace analysis
             return this.completeFromAnalysis(currentProject, analysis);
         }
+    }
+    
+    /**
+     * Analyse la structure du code pour extraire des métriques détaillées
+     */
+    private analyzeCodeStructure(files: Array<{ path: string; content: string; language: string }>): {
+        totalClasses: number;
+        totalFunctions: number;
+        totalInterfaces: number;
+        totalComponents: number;
+        apiEndpoints: string[];
+        detectedPatterns: string[];
+        mainModules: Array<{ name: string; type: string; exports: string[]; description: string }>;
+        implementedFeatures: string[];
+        todos: string[];
+    } {
+        let totalClasses = 0;
+        let totalFunctions = 0;
+        let totalInterfaces = 0;
+        let totalComponents = 0;
+        const apiEndpoints: string[] = [];
+        const detectedPatterns: Set<string> = new Set();
+        const mainModules: Array<{ name: string; type: string; exports: string[]; description: string }> = [];
+        const implementedFeatures: Set<string> = new Set();
+        const todos: string[] = [];
+        
+        for (const file of files) {
+            const content = file.content;
+            const fileName = file.path.split('/').pop() || file.path.split('\\').pop() || '';
+            
+            // Compter les classes
+            const classMatches = content.match(/(?:export\s+)?(?:abstract\s+)?class\s+(\w+)/g) || [];
+            totalClasses += classMatches.length;
+            
+            // Compter les fonctions
+            const funcMatches = content.match(/(?:export\s+)?(?:async\s+)?function\s+(\w+)|const\s+(\w+)\s*=\s*(?:async\s+)?\([^)]*\)\s*(?:=>|{)/g) || [];
+            totalFunctions += funcMatches.length;
+            
+            // Compter les interfaces/types
+            const interfaceMatches = content.match(/(?:export\s+)?(?:interface|type)\s+(\w+)/g) || [];
+            totalInterfaces += interfaceMatches.length;
+            
+            // Détecter les composants React/Vue/Svelte
+            if (/export\s+(?:default\s+)?(?:function|const)\s+\w+.*(?:return\s*\(?\s*<|jsx|tsx)/i.test(content) ||
+                /React\.FC|React\.Component|useState|useEffect/.test(content)) {
+                totalComponents++;
+                implementedFeatures.add('Composants UI React');
+            }
+            
+            // Détecter les endpoints API
+            const routeMatches = content.match(/(?:app|router)\.(get|post|put|patch|delete)\s*\(\s*['"`]([^'"`]+)['"`]/gi) || [];
+            for (const match of routeMatches) {
+                const endpoint = match.replace(/(?:app|router)\.(get|post|put|patch|delete)\s*\(\s*['"`]/gi, '').replace(/['"`]$/, '');
+                apiEndpoints.push(endpoint);
+            }
+            
+            // Détecter les routes Next.js/API Routes
+            if (file.path.includes('/api/') || file.path.includes('/app/api/')) {
+                const methodMatch = content.match(/export\s+(?:async\s+)?function\s+(GET|POST|PUT|PATCH|DELETE|OPTIONS)/);
+                if (methodMatch) {
+                    const routePath = file.path.replace(/.*\/api\//, '/api/').replace(/\/route\.(ts|js)$/, '');
+                    apiEndpoints.push(`${methodMatch[1]} ${routePath}`);
+                    implementedFeatures.add('API Routes');
+                }
+            }
+            
+            // Détecter les patterns de design
+            if (/Singleton|getInstance|static\s+instance/i.test(content)) detectedPatterns.add('Singleton');
+            if (/Factory|createInstance|create\w+/i.test(content)) detectedPatterns.add('Factory');
+            if (/Observer|subscribe|emit|addEventListener|EventEmitter/i.test(content)) detectedPatterns.add('Observer/EventEmitter');
+            if (/Repository|findById|findAll|save|delete/i.test(content)) detectedPatterns.add('Repository');
+            if (/Service|@Injectable|@Service/i.test(content)) detectedPatterns.add('Service Layer');
+            if (/Middleware|next\s*\(|use\s*\(/i.test(content)) detectedPatterns.add('Middleware');
+            if (/Provider|Context|createContext|useContext/i.test(content)) detectedPatterns.add('Context/Provider');
+            if (/Reducer|useReducer|dispatch|action/i.test(content)) detectedPatterns.add('Reducer');
+            if (/Store|zustand|createStore|useStore/i.test(content)) detectedPatterns.add('State Store');
+            if (/Hook|use[A-Z]\w+/i.test(content) && file.path.includes('hook')) detectedPatterns.add('Custom Hooks');
+            
+            // Détecter les features implémentées
+            if (/auth|login|signup|session|jwt|passport/i.test(content)) implementedFeatures.add('Authentification');
+            if (/prisma|sequelize|typeorm|mongoose|knex/i.test(content)) implementedFeatures.add('ORM/Base de données');
+            if (/upload|multer|formidable|multipart/i.test(content)) implementedFeatures.add('Upload de fichiers');
+            if (/socket|websocket|pusher|sse|realtime/i.test(content)) implementedFeatures.add('Temps réel');
+            if (/email|nodemailer|sendgrid|mailgun/i.test(content)) implementedFeatures.add('Envoi d\'emails');
+            if (/stripe|payment|checkout|billing/i.test(content)) implementedFeatures.add('Paiement');
+            if (/search|elasticsearch|algolia|meilisearch/i.test(content)) implementedFeatures.add('Recherche avancée');
+            if (/cache|redis|memcache/i.test(content)) implementedFeatures.add('Caching');
+            if (/test|describe|it\(|expect\(/i.test(content) && file.path.includes('test')) implementedFeatures.add('Tests automatisés');
+            if (/i18n|intl|translate|localize/i.test(content)) implementedFeatures.add('Internationalisation');
+            if (/theme|darkMode|lightMode|colorScheme/i.test(content)) implementedFeatures.add('Thèmes clair/sombre');
+            if (/notification|toast|alert|snackbar/i.test(content)) implementedFeatures.add('Notifications UI');
+            if (/modal|dialog|drawer|sheet/i.test(content)) implementedFeatures.add('Modals/Dialogs');
+            if (/table|datagrid|pagination|sort/i.test(content)) implementedFeatures.add('Tableaux de données');
+            if (/form|useForm|formik|zod|yup|validation/i.test(content)) implementedFeatures.add('Formulaires avec validation');
+            if (/chart|graph|d3|recharts|chartjs/i.test(content)) implementedFeatures.add('Graphiques/Charts');
+            if (/dashboard|analytics|metrics/i.test(content)) implementedFeatures.add('Dashboard/Analytics');
+            
+            // Extraire les TODOs et FIXMEs
+            const todoMatches = content.match(/(?:TODO|FIXME|HACK|XXX):\s*(.+)/gi) || [];
+            todos.push(...todoMatches.slice(0, 3).map(t => t.replace(/^(?:TODO|FIXME|HACK|XXX):\s*/i, '')));
+            
+            // Analyser les exports pour identifier les modules principaux
+            const exportMatches = content.match(/export\s+(?:default\s+)?(?:class|function|const|interface|type)\s+(\w+)/g) || [];
+            if (exportMatches.length > 0) {
+                const exports = exportMatches.map(e => e.replace(/export\s+(?:default\s+)?(?:class|function|const|interface|type)\s+/, ''));
+                
+                let moduleType = 'Module';
+                let description = '';
+                
+                if (file.path.includes('service')) {
+                    moduleType = 'Service';
+                    description = 'Service métier gérant une logique spécifique';
+                } else if (file.path.includes('component') || /\.(tsx|jsx)$/.test(file.path)) {
+                    moduleType = 'Component';
+                    description = 'Composant UI réutilisable';
+                } else if (file.path.includes('hook')) {
+                    moduleType = 'Hook';
+                    description = 'Hook React personnalisé';
+                } else if (file.path.includes('util') || file.path.includes('helper')) {
+                    moduleType = 'Utility';
+                    description = 'Fonctions utilitaires';
+                } else if (file.path.includes('api') || file.path.includes('route')) {
+                    moduleType = 'API';
+                    description = 'Endpoint ou route API';
+                } else if (file.path.includes('store') || file.path.includes('state')) {
+                    moduleType = 'Store';
+                    description = 'Gestion d\'état global';
+                } else if (file.path.includes('type') || file.path.includes('interface')) {
+                    moduleType = 'Types';
+                    description = 'Définitions de types TypeScript';
+                } else if (file.path.includes('config')) {
+                    moduleType = 'Config';
+                    description = 'Configuration de l\'application';
+                }
+                
+                mainModules.push({
+                    name: fileName,
+                    type: moduleType,
+                    exports,
+                    description
+                });
+            }
+        }
+        
+        return {
+            totalClasses,
+            totalFunctions,
+            totalInterfaces,
+            totalComponents,
+            apiEndpoints: [...new Set(apiEndpoints)].slice(0, 20),
+            detectedPatterns: Array.from(detectedPatterns),
+            mainModules: mainModules.slice(0, 15),
+            implementedFeatures: Array.from(implementedFeatures),
+            todos: todos.slice(0, 10)
+        };
+    }
+    
+    /**
+     * Construit le contexte enrichi avec le code source analysé
+     */
+    private buildEnrichedContextWithCode(
+        currentProject: any,
+        analysis: WorkspaceAnalysis | null,
+        codeSummary: string,
+        codeAnalysis: ReturnType<typeof AICompletionService.prototype.analyzeCodeStructure>
+    ): string {
+        // Contexte de base
+        let context = this.buildEnrichedContext(currentProject, analysis);
+        
+        // === Ajouter l'analyse du code source ===
+        const codeSection = `
+
+---
+
+## 🔍 ANALYSE PROFONDE DU CODE SOURCE
+
+### 📊 Métriques du Code Analysé
+| Métrique | Valeur |
+|----------|--------|
+| Classes/Modules | ${codeAnalysis.totalClasses} |
+| Fonctions | ${codeAnalysis.totalFunctions} |
+| Interfaces/Types | ${codeAnalysis.totalInterfaces} |
+| Composants UI | ${codeAnalysis.totalComponents} |
+| Endpoints API | ${codeAnalysis.apiEndpoints.length} |
+
+### 🏗️ Patterns de Design Détectés
+${codeAnalysis.detectedPatterns.length > 0 
+    ? codeAnalysis.detectedPatterns.map(p => `- ✅ **${p}**`).join('\n')
+    : '⚠️ Aucun pattern clairement identifié'}
+
+### ✅ Fonctionnalités RÉELLEMENT Implémentées
+**Ces fonctionnalités sont présentes dans le code source:**
+${codeAnalysis.implementedFeatures.length > 0
+    ? codeAnalysis.implementedFeatures.map((f, i) => `${i + 1}. ✅ ${f}`).join('\n')
+    : '⚠️ Aucune fonctionnalité majeure détectée'}
+
+### 🌐 Endpoints API Détectés
+${codeAnalysis.apiEndpoints.length > 0
+    ? codeAnalysis.apiEndpoints.slice(0, 15).map(e => `- \`${e}\``).join('\n')
+    : '⚠️ Aucune route API détectée'}
+
+### 📦 Modules Principaux
+| Fichier | Type | Exports | Description |
+|---------|------|---------|-------------|
+${codeAnalysis.mainModules.slice(0, 12).map(m => 
+    `| ${m.name} | ${m.type} | ${m.exports.slice(0, 3).join(', ')}${m.exports.length > 3 ? '...' : ''} | ${m.description} |`
+).join('\n')}
+
+${codeAnalysis.todos.length > 0 ? `### 📝 TODOs/FIXMEs dans le Code
+${codeAnalysis.todos.map(t => `- ⚠️ ${t}`).join('\n')}` : ''}
+
+### 📂 Structure du Code Source
+${codeSummary}
+`;
+        
+        return context + codeSection;
     }
 
     /**
@@ -1597,7 +1948,15 @@ Exemple: "LCP < 2.5s | OWASP Top 10 mitigé | Score Lighthouse > 90 | Coverage >
 
         return `${systemContext}
 
-Tu dois générer une fiche projet **COMPLÈTE, DÉTAILLÉE et PROFESSIONNELLE** basée sur l'analyse ci-dessous.
+Tu dois générer une fiche projet **COMPLÈTE, DÉTAILLÉE et PROFESSIONNELLE** basée sur l'analyse APPROFONDIE du code source ci-dessous.
+
+**⚠️ IMPORTANT: Tu as accès à une analyse RÉELLE du code source du projet!**
+- Les fonctionnalités listées dans "Fonctionnalités RÉELLEMENT Implémentées" sont CONFIRMÉES par le code
+- Les patterns détectés proviennent de l'analyse statique du code
+- Les endpoints API ont été extraits des fichiers de routing
+- Les modules et leurs exports sont issus du scan des fichiers sources
+
+**Utilise ces informations pour personnaliser ta réponse au maximum!**
 
 ${enrichedContext}
 
@@ -1611,13 +1970,14 @@ Les champs suivants sont vides ou manquants et **DOIVENT** être générés: **$
 
 ## ⚠️ RÈGLES CRITIQUES
 
-1. **QUANTITÉ**: Génère au minimum 8-12 phases dans la roadmap, chacune avec une description détaillée de 2-3 phrases
-2. **QUALITÉ**: Chaque description doit être actionnable et spécifique au contexte détecté
-3. **COHÉRENCE**: La roadmap doit suivre un ordre logique de développement
-4. **RÉALISME**: Les estimatedHours doivent être réalistes (16-56h par phase typiquement)
-5. **FRANÇAIS**: Tous les textes en français, sauf termes techniques anglais acceptés
-6. **CONTEXTE**: Utilise les informations du workspace (dépendances, fichiers) pour personnaliser les suggestions
-7. **COMPLÉTION UNIQUEMENT**: Ne remplace PAS les champs déjà remplis, génère uniquement les champs vides
+1. **ANALYSE DU CODE**: Base tes suggestions sur les VRAIES fonctionnalités détectées dans le code
+2. **QUANTITÉ**: Génère au minimum 10-15 phases dans la roadmap, chacune avec une description de 2-3 phrases
+3. **QUALITÉ**: Chaque phase doit être spécifique au projet analysé (mentionne les fichiers/modules réels si pertinent)
+4. **COHÉRENCE**: La roadmap doit correspondre à l'état actuel du code (ne pas suggérer ce qui existe déjà)
+5. **RÉALISME**: Les estimatedHours doivent être réalistes (16-56h par phase typiquement)
+6. **FRANÇAIS**: Tous les textes en français, sauf termes techniques anglais acceptés
+7. **ARCHITECTURE**: Décris l'architecture en te basant sur les patterns DÉTECTÉS dans le code
+8. **FEATURES**: Liste les coreFeatures en incluant celles déjà implémentées + les prochaines à développer
 
 ${exampleOutput}
 
@@ -1645,7 +2005,7 @@ Assure-toi que le JSON est valide et peut être parsé.
     }
 
     /**
-     * Fusionne le résultat IA avec l'analyse du workspace
+     * Fusionne le résultat IA avec l'analyse du workspace - Version améliorée avec code source
      */
     private mergeWithAnalysis(
         aiResult: any, 
@@ -1653,33 +2013,41 @@ Assure-toi que le JSON est valide et peut être parsé.
         currentProject: any
     ): AICompletionResult {
         const result: AICompletionResult = {};
+        
+        console.log('[AICompletionService] Merging AI result with analysis...');
+        console.log(`[AICompletionService] AI returned: ${Object.keys(aiResult).join(', ')}`);
 
         // Priorité: données existantes > IA > analyse workspace
 
-        // Nom
+        // Nom - utiliser le nom du package.json en priorité
         if (!currentProject?.name?.trim()) {
-            result.name = aiResult.name || analysis?.name || 'Nouveau Projet';
+            result.name = analysis?.name || aiResult.name || 'Nouveau Projet';
         }
 
-        // Concept
+        // Concept - L'IA est prioritaire car elle a analysé le code
         if (!currentProject?.concept?.trim()) {
-            result.concept = aiResult.concept || analysis?.concept || '';
+            // Si l'IA a généré un concept avec du contexte réel (> 100 chars), le préférer
+            if (aiResult.concept && aiResult.concept.length > 100) {
+                result.concept = aiResult.concept;
+            } else {
+                result.concept = analysis?.concept || aiResult.concept || '';
+            }
         }
 
         // Elevator Pitch
         if (!currentProject?.elevatorPitch?.trim()) {
-            result.elevatorPitch = aiResult.elevatorPitch || '';
+            result.elevatorPitch = aiResult.elevatorPitch || analysis?.elevatorPitch || '';
         }
 
         // Target Audience
         if (!currentProject?.targetAudience?.trim()) {
-            result.targetAudience = aiResult.targetAudience || '';
+            result.targetAudience = aiResult.targetAudience || analysis?.targetAudience || '';
         }
 
         // Type
         result.type = analysis?.type || currentProject?.type || 'WEB_MOBILE';
 
-        // Specs
+        // Specs - fusion intelligente
         result.specs = {
             ...(currentProject?.specs || {}),
             ...(analysis?.specs || {}),
@@ -1688,29 +2056,50 @@ Assure-toi que le JSON est valide et peut être parsé.
 
         // Validation Criteria
         if (!currentProject?.validationCriteria?.trim()) {
-            result.validationCriteria = aiResult.validationCriteria || '';
+            result.validationCriteria = aiResult.validationCriteria || analysis?.validationCriteria || '';
         }
 
-        // Architecture
+        // Architecture - L'IA est prioritaire si elle a détecté des patterns dans le code
         if (!currentProject?.architecture?.trim()) {
-            result.architecture = aiResult.architecture || '';
+            if (aiResult.architecture && aiResult.architecture.length > 50) {
+                result.architecture = aiResult.architecture;
+            } else {
+                result.architecture = analysis?.architecture || aiResult.architecture || '';
+            }
         }
 
-        // Roadmap (seulement si vide)
+        // Core Features - Fusionner les features détectées par l'analyse + celles de l'IA
+        if (!currentProject?.coreFeatures?.length) {
+            const aiFeatures = aiResult.coreFeatures || [];
+            const analysisFeatures = analysis?.coreFeatures || [];
+            // Combiner et dédupliquer les features
+            const allFeatures = [...new Set([...analysisFeatures, ...aiFeatures])];
+            result.coreFeatures = allFeatures.length > 0 ? allFeatures : undefined;
+        }
+
+        // Roadmap (seulement si vide) - L'IA est prioritaire car elle a le contexte du code
         if (!currentProject?.roadmap?.length) {
             const aiRoadmap = aiResult.roadmap || [];
             const analysisRoadmap = analysis?.suggestedPhases || [];
             
-            result.roadmap = (aiRoadmap.length > 0 ? aiRoadmap : analysisRoadmap).map((phase: any, i: number) => ({
+            // Préférer la roadmap IA si elle a plus de 5 phases (signe d'une analyse détaillée)
+            const sourceRoadmap = aiRoadmap.length >= 5 ? aiRoadmap : 
+                                  aiRoadmap.length > 0 ? aiRoadmap :
+                                  analysisRoadmap;
+            
+            result.roadmap = sourceRoadmap.map((phase: any, i: number) => ({
                 id: `gen-${Date.now()}-${i}`,
                 title: phase.title,
                 description: phase.description || '',
-                status: 'todo',
+                status: phase.status || 'todo',
                 priority: phase.priority || 'Moyenne',
-                progress: 0,
+                progress: phase.progress || 0,
+                estimatedHours: phase.estimatedHours || undefined,
                 linkedAssets: [],
                 dependencies: []
             }));
+            
+            console.log(`[AICompletionService] Generated ${result.roadmap?.length || 0} roadmap phases from ${aiRoadmap.length >= 5 ? 'AI' : 'fallback'}`);
         }
 
         // Commands (depuis analyse workspace)
@@ -1734,7 +2123,7 @@ Assure-toi que le JSON est valide et peut être parsé.
             }));
         }
 
-        // Test Cases
+        // Test Cases - Fusionner IA et analyse
         if (!currentProject?.testCases?.length) {
             result.testCases = aiResult.testCases || [];
         }
@@ -2153,51 +2542,777 @@ Assure-toi que le JSON est valide et peut être parsé.
     // ===========================
 
     /**
-     * Collecte tous les fichiers de code du projet pour analyse
+     * Collecte les fichiers de configuration et documentation importants
+     * Ces fichiers sont prioritaires car ils décrivent le projet
      */
-    private async collectProjectFiles(maxFiles: number = 30): Promise<Array<{ path: string; content: string; language: string }>> {
+    private async collectImportantConfigFiles(): Promise<Array<{ path: string; content: string; type: string }>> {
         const workspaceFolders = vscode.workspace.workspaceFolders;
         if (!workspaceFolders) return [];
 
+        const rootPath = workspaceFolders[0].uri.fsPath;
+        
+        // Fichiers à la racine du projet
+        const rootFiles = [
+            { name: 'package.json', type: 'dependencies' },
+            { name: 'README.md', type: 'documentation' },
+            { name: 'readme.md', type: 'documentation' },
+            { name: 'README.en.md', type: 'documentation' },
+            { name: 'tsconfig.json', type: 'config' },
+            { name: 'jsconfig.json', type: 'config' },
+            { name: '.env.example', type: 'environment' },
+            { name: '.env.local.example', type: 'environment' },
+            { name: '.env.development', type: 'environment' },
+            { name: 'docker-compose.yml', type: 'deployment' },
+            { name: 'docker-compose.yaml', type: 'deployment' },
+            { name: 'Dockerfile', type: 'deployment' },
+            { name: 'prisma/schema.prisma', type: 'database' },
+            { name: 'drizzle.config.ts', type: 'database' },
+            { name: 'knexfile.js', type: 'database' },
+            { name: 'knexfile.ts', type: 'database' },
+            { name: 'next.config.js', type: 'framework' },
+            { name: 'next.config.mjs', type: 'framework' },
+            { name: 'next.config.ts', type: 'framework' },
+            { name: 'vite.config.ts', type: 'framework' },
+            { name: 'vite.config.js', type: 'framework' },
+            { name: 'nuxt.config.ts', type: 'framework' },
+            { name: 'astro.config.mjs', type: 'framework' },
+            { name: 'svelte.config.js', type: 'framework' },
+            { name: 'remix.config.js', type: 'framework' },
+            { name: 'tailwind.config.js', type: 'styling' },
+            { name: 'tailwind.config.ts', type: 'styling' },
+            { name: 'openapi.yaml', type: 'api' },
+            { name: 'openapi.json', type: 'api' },
+            { name: 'swagger.json', type: 'api' },
+            { name: 'swagger.yaml', type: 'api' },
+            { name: 'CONTRIBUTING.md', type: 'documentation' },
+            { name: 'CHANGELOG.md', type: 'documentation' },
+            { name: 'vitest.config.ts', type: 'testing' },
+            { name: 'jest.config.js', type: 'testing' },
+            { name: 'jest.config.ts', type: 'testing' },
+            { name: 'playwright.config.ts', type: 'testing' },
+            { name: 'cypress.config.ts', type: 'testing' },
+            { name: '.eslintrc.js', type: 'linting' },
+            { name: '.eslintrc.json', type: 'linting' },
+            { name: 'eslint.config.js', type: 'linting' },
+            { name: 'eslint.config.mjs', type: 'linting' },
+            { name: 'pyproject.toml', type: 'dependencies' },
+            { name: 'requirements.txt', type: 'dependencies' },
+            { name: 'setup.py', type: 'dependencies' },
+            { name: 'Cargo.toml', type: 'dependencies' },
+            { name: 'go.mod', type: 'dependencies' },
+            { name: 'pom.xml', type: 'dependencies' },
+            { name: 'build.gradle', type: 'dependencies' },
+        ];
+
+        const collected: Array<{ path: string; content: string; type: string }> = [];
+
+        // Collecter les fichiers racine
+        for (const file of rootFiles) {
+            try {
+                const filePath = path.join(rootPath, file.name);
+                const uri = vscode.Uri.file(filePath);
+                const content = await vscode.workspace.fs.readFile(uri);
+                const text = Buffer.from(content).toString('utf8');
+                
+                // Limiter la taille à 20KB pour les fichiers de config
+                if (text.length > 20000) {
+                    collected.push({
+                        path: file.name,
+                        content: text.substring(0, 20000) + '\n... [TRUNCATED - ' + (text.length - 20000) + ' chars remaining]',
+                        type: file.type
+                    });
+                } else {
+                    collected.push({
+                        path: file.name,
+                        content: text,
+                        type: file.type
+                    });
+                }
+            } catch {
+                // File doesn't exist, skip it
+            }
+        }
+        
+        // Collecter les schémas GraphQL
+        const graphqlPatterns = ['**/*.graphql', '**/*.gql', '**/schema.graphql'];
+        for (const pattern of graphqlPatterns) {
+            const files = await vscode.workspace.findFiles(pattern, '**/node_modules/**', 10);
+            for (const file of files) {
+                try {
+                    const content = await vscode.workspace.fs.readFile(file);
+                    const text = Buffer.from(content).toString('utf8');
+                    if (text.length < 30000) {
+                        collected.push({
+                            path: vscode.workspace.asRelativePath(file),
+                            content: text,
+                            type: 'graphql'
+                        });
+                    }
+                } catch {
+                    // Skip
+                }
+            }
+        }
+        
+        // Collecter les fichiers SQL de migration/schema
+        const sqlPatterns = ['**/migrations/*.sql', '**/schema.sql', '**/init.sql', '**/db/*.sql'];
+        for (const pattern of sqlPatterns) {
+            const files = await vscode.workspace.findFiles(pattern, '**/node_modules/**', 10);
+            for (const file of files.slice(0, 5)) { // Max 5 fichiers SQL
+                try {
+                    const content = await vscode.workspace.fs.readFile(file);
+                    const text = Buffer.from(content).toString('utf8');
+                    if (text.length < 15000) {
+                        collected.push({
+                            path: vscode.workspace.asRelativePath(file),
+                            content: text,
+                            type: 'sql'
+                        });
+                    }
+                } catch {
+                    // Skip
+                }
+            }
+        }
+        
+        // Collecter les fichiers de types globaux
+        const typePatterns = ['**/types/index.ts', '**/types/global.ts', '**/types.ts', '**/@types/*.ts'];
+        for (const pattern of typePatterns) {
+            const files = await vscode.workspace.findFiles(pattern, '**/node_modules/**', 5);
+            for (const file of files) {
+                try {
+                    const content = await vscode.workspace.fs.readFile(file);
+                    const text = Buffer.from(content).toString('utf8');
+                    if (text.length < 25000) {
+                        collected.push({
+                            path: vscode.workspace.asRelativePath(file),
+                            content: text,
+                            type: 'types'
+                        });
+                    }
+                } catch {
+                    // Skip
+                }
+            }
+        }
+
+        return collected;
+    }
+
+    /**
+     * Construit un contexte avec le CODE SOURCE RÉEL des fichiers
+     */
+    private buildRealCodeContext(
+        configFiles: Array<{ path: string; content: string; type: string }>,
+        codeFiles: Array<{ path: string; content: string; language: string }>,
+        codeAnalysis: ReturnType<typeof AICompletionService.prototype.analyzeCodeStructure>
+    ): string {
+        const sections: string[] = [];
+        
+        // === Section 1: Fichiers de Configuration COMPLETS ===
+        sections.push('# 📋 FICHIERS DE CONFIGURATION ET DOCUMENTATION\n');
+        sections.push('> Ces fichiers décrivent le projet et ses dépendances\n');
+        
+        for (const file of configFiles) {
+            sections.push(`## 📄 ${file.path} (${file.type})`);
+            sections.push('```' + this.getMarkdownLangFromType(file.type));
+            sections.push(file.content);
+            sections.push('```\n');
+        }
+        
+        // === Section 2: ANALYSE DÉTAILLÉE de chaque fichier de code ===
+        sections.push('\n# 💻 ANALYSE DÉTAILLÉE DU CODE SOURCE\n');
+        sections.push('> Analyse en profondeur de chaque fichier important\n');
+        
+        // Prioriser les fichiers les plus importants
+        const prioritizedFiles = this.prioritizeCodeFiles(codeFiles);
+        
+        // Analyser les 15 fichiers les plus importants en détail
+        const filesToAnalyzeDeep = prioritizedFiles.slice(0, 15);
+        const remainingFiles = prioritizedFiles.slice(15);
+        
+        for (const file of filesToAnalyzeDeep) {
+            // Analyse en profondeur du fichier
+            const deepAnalysis = this.analyzeFileInDepth(file.path, file.content, file.language);
+            sections.push(this.formatFileAnalysis(deepAnalysis));
+            
+            // Inclure aussi le code source complet pour les fichiers les plus importants (top 8)
+            if (filesToAnalyzeDeep.indexOf(file) < 8) {
+                let content = file.content;
+                // Limiter à 10KB mais garder le maximum possible
+                if (content.length > 10000) {
+                    content = content.substring(0, 10000) + '\n\n// ... [FICHIER TRONQUÉ - ' + (file.content.length - 10000) + ' caractères restants]';
+                }
+                sections.push('\n**Code source complet:**');
+                sections.push('```' + file.language);
+                sections.push(content);
+                sections.push('```');
+            }
+            sections.push('\n---\n');
+        }
+        
+        // === Section 3: Résumé des Autres Fichiers avec analyse légère ===
+        if (remainingFiles.length > 0) {
+            sections.push('\n# 📂 AUTRES FICHIERS DU PROJET\n');
+            sections.push('> Analyse résumée des fichiers restants\n');
+            
+            for (const file of remainingFiles.slice(0, 25)) {
+                const quickAnalysis = this.analyzeFileInDepth(file.path, file.content, file.language);
+                
+                // Version condensée
+                sections.push(`### ${file.path}`);
+                sections.push(`- **Lignes:** ${quickAnalysis.lines} | **Exports:** ${quickAnalysis.exports.slice(0, 5).join(', ') || 'aucun'}`);
+                
+                if (quickAnalysis.classes.length > 0) {
+                    sections.push(`- **Classes:** ${quickAnalysis.classes.map(c => c.name).join(', ')}`);
+                }
+                if (quickAnalysis.functions.length > 0) {
+                    sections.push(`- **Fonctions:** ${quickAnalysis.functions.slice(0, 8).map(f => f.name).join(', ')}${quickAnalysis.functions.length > 8 ? '...' : ''}`);
+                }
+                if (quickAnalysis.reactComponents.length > 0) {
+                    sections.push(`- **Composants:** ${quickAnalysis.reactComponents.map(c => c.name).join(', ')}`);
+                }
+                if (quickAnalysis.apiRoutes.length > 0) {
+                    sections.push(`- **Routes:** ${quickAnalysis.apiRoutes.map(r => r.method + ' ' + r.path).join(', ')}`);
+                }
+                sections.push('');
+            }
+        }
+        
+        // === Section 4: Synthèse Globale ===
+        sections.push('\n# 🔍 SYNTHÈSE DE L\'ARCHITECTURE\n');
+        
+        sections.push('## 📊 Métriques Globales');
+        sections.push(`| Métrique | Valeur |`);
+        sections.push(`|----------|--------|`);
+        sections.push(`| Total Fichiers Analysés | ${codeFiles.length} |`);
+        sections.push(`| Classes/Modules | ${codeAnalysis.totalClasses} |`);
+        sections.push(`| Fonctions | ${codeAnalysis.totalFunctions} |`);
+        sections.push(`| Interfaces/Types | ${codeAnalysis.totalInterfaces} |`);
+        sections.push(`| Composants UI | ${codeAnalysis.totalComponents} |`);
+        sections.push(`| Endpoints API | ${codeAnalysis.apiEndpoints.length} |`);
+        
+        if (codeAnalysis.apiEndpoints.length > 0) {
+            sections.push('\n## 🌐 Carte des Endpoints API');
+            sections.push('```');
+            codeAnalysis.apiEndpoints.slice(0, 30).forEach(ep => {
+                sections.push(ep);
+            });
+            sections.push('```');
+        }
+        
+        if (codeAnalysis.detectedPatterns.length > 0) {
+            sections.push('\n## 🏗️ Patterns Architecturaux Détectés');
+            codeAnalysis.detectedPatterns.forEach(p => {
+                sections.push(`- ✅ **${p}**`);
+            });
+        }
+        
+        if (codeAnalysis.implementedFeatures.length > 0) {
+            sections.push('\n## ✅ Fonctionnalités Implémentées (détectées dans le code)');
+            let featureNum = 1;
+            codeAnalysis.implementedFeatures.forEach(f => {
+                sections.push(`${featureNum}. ${f}`);
+                featureNum++;
+            });
+        }
+        
+        if (codeAnalysis.mainModules.length > 0) {
+            sections.push('\n## 📦 Modules Principaux');
+            sections.push('| Module | Type | Exports Clés | Description |');
+            sections.push('|--------|------|--------------|-------------|');
+            codeAnalysis.mainModules.slice(0, 20).forEach(m => {
+                sections.push(`| ${m.name} | ${m.type} | ${m.exports.slice(0, 4).join(', ')} | ${m.description} |`);
+            });
+        }
+        
+        if (codeAnalysis.todos.length > 0) {
+            sections.push('\n## 📝 TODOs et Travaux en Cours');
+            sections.push('> Ces éléments indiquent les tâches restantes identifiées dans le code\n');
+            codeAnalysis.todos.slice(0, 20).forEach(t => {
+                sections.push(`- ⚠️ ${t}`);
+            });
+        }
+        
+        return sections.join('\n');
+    }
+    
+    /**
+     * Priorise les fichiers de code par importance
+     */
+    private prioritizeCodeFiles(files: Array<{ path: string; content: string; language: string }>): Array<{ path: string; content: string; language: string }> {
+        // Scoring system for file importance
+        const scoreFile = (file: { path: string; content: string; language: string }): number => {
+            let score = 0;
+            const pathLower = file.path.toLowerCase();
+            
+            // Entry points and main files
+            if (pathLower.includes('index.') || pathLower.includes('main.') || pathLower.includes('app.')) score += 100;
+            if (pathLower.includes('server.') || pathLower.includes('api/')) score += 80;
+            if (pathLower.includes('extension.ts') || pathLower.includes('extension.js')) score += 100;
+            
+            // Source directories
+            if (pathLower.includes('/src/')) score += 30;
+            if (pathLower.includes('/lib/')) score += 25;
+            if (pathLower.includes('/services/')) score += 50;
+            if (pathLower.includes('/components/')) score += 40;
+            if (pathLower.includes('/hooks/')) score += 35;
+            if (pathLower.includes('/utils/')) score += 20;
+            if (pathLower.includes('/api/')) score += 60;
+            if (pathLower.includes('/routes/')) score += 55;
+            if (pathLower.includes('/controllers/')) score += 50;
+            if (pathLower.includes('/models/')) score += 45;
+            
+            // Test files are lower priority
+            if (pathLower.includes('.test.') || pathLower.includes('.spec.') || pathLower.includes('__tests__')) score -= 50;
+            
+            // Type definitions
+            if (pathLower.includes('/types/') || pathLower.endsWith('.d.ts')) score += 20;
+            
+            // File size (prefer medium-sized files)
+            const lines = file.content.split('\n').length;
+            if (lines >= 50 && lines <= 500) score += 20;
+            if (lines > 500 && lines <= 1000) score += 10;
+            
+            // Contains important patterns
+            if (file.content.includes('export default')) score += 10;
+            if (file.content.includes('export class')) score += 15;
+            if (file.content.includes('async function')) score += 5;
+            if (/\.(get|post|put|delete|patch)\s*\(/.test(file.content)) score += 30; // API routes
+            
+            return score;
+        };
+        
+        return [...files].sort((a, b) => scoreFile(b) - scoreFile(a));
+    }
+    
+    /**
+     * Obtient l'extension markdown appropriée pour le type de fichier
+     */
+    private getMarkdownLangFromType(type: string): string {
+        const langMap: Record<string, string> = {
+            'dependencies': 'json',
+            'documentation': 'markdown',
+            'config': 'json',
+            'environment': 'bash',
+            'deployment': 'yaml',
+            'database': 'prisma',
+            'framework': 'javascript',
+            'styling': 'javascript',
+            'api': 'yaml'
+        };
+        return langMap[type] || 'text';
+    }
+
+    /**
+     * Construit le contexte enrichi avec le code source RÉEL
+     */
+    private buildEnrichedContextWithRealCode(
+        currentProject: any,
+        analysis: WorkspaceAnalysis | null,
+        realCodeContext: string,
+        codeAnalysis: ReturnType<typeof AICompletionService.prototype.analyzeCodeStructure>
+    ): string {
+        // Contexte de base du projet
+        let context = this.buildEnrichedContext(currentProject, analysis);
+        
+        // Ajouter le contexte avec le code source réel
+        context += `
+
+---
+
+# 🔬 DONNÉES D'ANALYSE RÉELLES DU WORKSPACE
+
+**IMPORTANT**: Les informations ci-dessous proviennent de l'analyse DIRECTE des fichiers du projet.
+Utilise ces données RÉELLES pour générer une complétion précise et pertinente.
+
+${realCodeContext}
+
+---
+
+## ⚠️ INSTRUCTIONS CRITIQUES
+
+1. **BASE-TOI UNIQUEMENT SUR LE CODE ANALYSÉ CI-DESSUS** pour décrire le projet
+2. **NE PAS INVENTER** de fonctionnalités qui ne sont pas présentes dans le code
+3. **UTILISE LES NOMS RÉELS** des classes, fonctions et fichiers du projet
+4. **La roadmap doit refléter** l'état actuel du code et les TODOs trouvés
+5. **Sois PRÉCIS** sur les technologies et frameworks détectés
+
+`;
+        
+        return context;
+    }
+
+    /**
+     * Analyse détaillée d'un fichier de code - extrait TOUTES les informations importantes
+     */
+    private analyzeFileInDepth(filePath: string, content: string, language: string): {
+        path: string;
+        language: string;
+        lines: number;
+        imports: string[];
+        exports: string[];
+        classes: Array<{ name: string; extends?: string; implements?: string[]; methods: string[]; properties: string[] }>;
+        functions: Array<{ name: string; params: string; returnType?: string; isAsync: boolean; isExported: boolean }>;
+        interfaces: Array<{ name: string; properties: string[] }>;
+        types: Array<{ name: string; definition: string }>;
+        constants: Array<{ name: string; type?: string; value?: string }>;
+        reactComponents: Array<{ name: string; props?: string[]; hooks: string[] }>;
+        apiRoutes: Array<{ method: string; path: string; handler: string }>;
+        dependencies: string[];
+        comments: string[];
+        todos: string[];
+    } {
+        const lines = content.split('\n');
+        const result = {
+            path: filePath,
+            language,
+            lines: lines.length,
+            imports: [] as string[],
+            exports: [] as string[],
+            classes: [] as Array<{ name: string; extends?: string; implements?: string[]; methods: string[]; properties: string[] }>,
+            functions: [] as Array<{ name: string; params: string; returnType?: string; isAsync: boolean; isExported: boolean }>,
+            interfaces: [] as Array<{ name: string; properties: string[] }>,
+            types: [] as Array<{ name: string; definition: string }>,
+            constants: [] as Array<{ name: string; type?: string; value?: string }>,
+            reactComponents: [] as Array<{ name: string; props?: string[]; hooks: string[] }>,
+            apiRoutes: [] as Array<{ method: string; path: string; handler: string }>,
+            dependencies: [] as string[],
+            comments: [] as string[],
+            todos: [] as string[]
+        };
+
+        // === IMPORTS ===
+        const importMatches = content.match(/^import\s+(?:(?:\{[^}]+\}|[\w*]+)\s+from\s+)?['"]([^'"]+)['"]/gm) || [];
+        result.imports = importMatches.map(imp => {
+            const fromMatch = imp.match(/from\s+['"]([^'"]+)['"]/);
+            return fromMatch ? fromMatch[1] : imp.replace(/^import\s+['"]/, '').replace(/['"]$/, '');
+        });
+
+        // === EXPORTS ===
+        const exportMatches = content.match(/^export\s+(?:default\s+)?(?:async\s+)?(?:class|function|const|let|var|interface|type|enum)\s+(\w+)/gm) || [];
+        result.exports = exportMatches.map(exp => {
+            const nameMatch = exp.match(/(?:class|function|const|let|var|interface|type|enum)\s+(\w+)/);
+            return nameMatch ? nameMatch[1] : exp;
+        });
+
+        // === CLASSES (with detailed analysis) ===
+        const classRegex = /(?:export\s+)?(?:abstract\s+)?class\s+(\w+)(?:\s+extends\s+(\w+))?(?:\s+implements\s+([^{]+))?\s*\{/g;
+        let classMatch;
+        while ((classMatch = classRegex.exec(content)) !== null) {
+            const className = classMatch[1];
+            const extendsClass = classMatch[2];
+            const implementsStr = classMatch[3]?.trim();
+            const implements_ = implementsStr ? implementsStr.split(',').map(i => i.trim()) : [];
+            
+            // Find class body and extract methods/properties
+            const classStart = classMatch.index + classMatch[0].length;
+            let braceCount = 1;
+            let classEnd = classStart;
+            for (let i = classStart; i < content.length && braceCount > 0; i++) {
+                if (content[i] === '{') braceCount++;
+                else if (content[i] === '}') braceCount--;
+                classEnd = i;
+            }
+            const classBody = content.substring(classStart, classEnd);
+            
+            // Extract methods
+            const methodMatches = classBody.match(/(?:public|private|protected)?\s*(?:async\s+)?(?:static\s+)?(\w+)\s*\([^)]*\)/g) || [];
+            const methods = methodMatches.map(m => m.trim()).filter(m => !m.includes('constructor'));
+            
+            // Extract properties
+            const propMatches = classBody.match(/(?:public|private|protected)?\s*(?:readonly\s+)?(\w+)\s*[?:]?\s*:\s*[^;=]+[;=]/g) || [];
+            const properties = propMatches.map(p => p.trim().split(':')[0].trim());
+            
+            result.classes.push({
+                name: className,
+                extends: extendsClass,
+                implements: implements_,
+                methods: methods.slice(0, 20),
+                properties: properties.slice(0, 20)
+            });
+        }
+
+        // === FUNCTIONS ===
+        const funcRegex = /(?:export\s+)?(async\s+)?function\s+(\w+)\s*(?:<[^>]+>)?\s*\(([^)]*)\)(?:\s*:\s*([^{]+))?\s*\{/g;
+        let funcMatch;
+        while ((funcMatch = funcRegex.exec(content)) !== null) {
+            result.functions.push({
+                name: funcMatch[2],
+                params: funcMatch[3]?.trim() || '',
+                returnType: funcMatch[4]?.trim(),
+                isAsync: !!funcMatch[1],
+                isExported: content.substring(funcMatch.index - 7, funcMatch.index).includes('export')
+            });
+        }
+
+        // Arrow functions
+        const arrowFuncRegex = /(?:export\s+)?const\s+(\w+)\s*(?::\s*[^=]+)?\s*=\s*(async\s+)?\([^)]*\)(?:\s*:\s*[^=]+)?\s*=>/g;
+        let arrowMatch;
+        while ((arrowMatch = arrowFuncRegex.exec(content)) !== null) {
+            result.functions.push({
+                name: arrowMatch[1],
+                params: '',
+                isAsync: !!arrowMatch[2],
+                isExported: content.substring(arrowMatch.index - 7, arrowMatch.index).includes('export')
+            });
+        }
+
+        // === INTERFACES ===
+        const interfaceRegex = /(?:export\s+)?interface\s+(\w+)(?:\s+extends\s+[^{]+)?\s*\{([^}]+)\}/g;
+        let intMatch;
+        while ((intMatch = interfaceRegex.exec(content)) !== null) {
+            const props = intMatch[2].split(';').map(p => p.trim()).filter(p => p && !p.startsWith('//'));
+            result.interfaces.push({
+                name: intMatch[1],
+                properties: props.slice(0, 15)
+            });
+        }
+
+        // === TYPES ===
+        const typeRegex = /(?:export\s+)?type\s+(\w+)\s*=\s*([^;]+);/g;
+        let typeMatch;
+        while ((typeMatch = typeRegex.exec(content)) !== null) {
+            result.types.push({
+                name: typeMatch[1],
+                definition: typeMatch[2].trim().substring(0, 200)
+            });
+        }
+
+        // === CONSTANTS ===
+        const constRegex = /(?:export\s+)?const\s+(\w+)(?:\s*:\s*([^=]+))?\s*=\s*([^;]+)/g;
+        let constMatch;
+        while ((constMatch = constRegex.exec(content)) !== null) {
+            // Skip function definitions
+            if (constMatch[3].includes('=>') || constMatch[3].includes('function')) continue;
+            result.constants.push({
+                name: constMatch[1],
+                type: constMatch[2]?.trim(),
+                value: constMatch[3].trim().substring(0, 100)
+            });
+        }
+
+        // === REACT COMPONENTS ===
+        const componentRegex = /(?:export\s+)?(?:default\s+)?(?:function|const)\s+(\w+).*?(?:React\.FC|FC<|Props|return\s*\(?[\s\n]*<)/gs;
+        let compMatch;
+        while ((compMatch = componentRegex.exec(content)) !== null) {
+            const compName = compMatch[1];
+            // Find hooks used in component
+            const compStart = compMatch.index;
+            const compEnd = Math.min(compStart + 2000, content.length);
+            const compBody = content.substring(compStart, compEnd);
+            const hooksUsed = compBody.match(/use[A-Z]\w+/g) || [];
+            
+            result.reactComponents.push({
+                name: compName,
+                hooks: [...new Set(hooksUsed)]
+            });
+        }
+
+        // === API ROUTES ===
+        const routeRegex = /(?:app|router)\.(get|post|put|patch|delete)\s*\(\s*['"`]([^'"`]+)['"`]/gi;
+        let routeMatch;
+        while ((routeMatch = routeRegex.exec(content)) !== null) {
+            result.apiRoutes.push({
+                method: routeMatch[1].toUpperCase(),
+                path: routeMatch[2],
+                handler: 'inline'
+            });
+        }
+
+        // Next.js App Router
+        const nextRouteMatch = content.match(/export\s+(?:async\s+)?function\s+(GET|POST|PUT|PATCH|DELETE|OPTIONS)/);
+        if (nextRouteMatch) {
+            const routePath = filePath.replace(/.*\/api\//, '/api/').replace(/\/route\.(ts|js)$/, '');
+            result.apiRoutes.push({
+                method: nextRouteMatch[1],
+                path: routePath,
+                handler: nextRouteMatch[1]
+            });
+        }
+
+        // === DEPENDENCIES (from imports) ===
+        result.dependencies = result.imports
+            .filter(imp => !imp.startsWith('.') && !imp.startsWith('@/'))
+            .map(imp => imp.split('/')[0].startsWith('@') ? imp.split('/').slice(0, 2).join('/') : imp.split('/')[0]);
+
+        // === COMMENTS (JSDoc and important comments) ===
+        const jsdocMatches = content.match(/\/\*\*[\s\S]*?\*\//g) || [];
+        result.comments = jsdocMatches.slice(0, 5).map(c => c.replace(/[\s\n]+/g, ' ').substring(0, 200));
+
+        // === TODOs ===
+        const todoMatches = content.match(/(?:\/\/|\/\*)\s*(?:TODO|FIXME|HACK|XXX|NOTE|BUG):\s*([^\n*]+)/gi) || [];
+        result.todos = todoMatches.map(t => t.replace(/^(?:\/\/|\/\*)\s*/, '').trim());
+
+        return result;
+    }
+
+    /**
+     * Génère une représentation textuelle détaillée d'un fichier analysé
+     */
+    private formatFileAnalysis(analysis: ReturnType<typeof AICompletionService.prototype.analyzeFileInDepth>): string {
+        const sections: string[] = [];
+        
+        sections.push(`### 📄 ${analysis.path}`);
+        sections.push(`**Langage:** ${analysis.language} | **Lignes:** ${analysis.lines}`);
+        
+        if (analysis.exports.length > 0) {
+            sections.push(`**Exports:** \`${analysis.exports.join('`, `')}\``);
+        }
+        
+        if (analysis.classes.length > 0) {
+            sections.push('\n**Classes:**');
+            for (const cls of analysis.classes) {
+                let classLine = `- \`class ${cls.name}\``;
+                if (cls.extends) classLine += ` extends \`${cls.extends}\``;
+                if (cls.implements && cls.implements.length > 0) classLine += ` implements \`${cls.implements.join('`, `')}\``;
+                sections.push(classLine);
+                if (cls.methods.length > 0) {
+                    sections.push(`  - Méthodes: \`${cls.methods.slice(0, 10).join('`, `')}\`${cls.methods.length > 10 ? '...' : ''}`);
+                }
+                if (cls.properties.length > 0) {
+                    sections.push(`  - Propriétés: \`${cls.properties.slice(0, 10).join('`, `')}\`${cls.properties.length > 10 ? '...' : ''}`);
+                }
+            }
+        }
+        
+        if (analysis.functions.length > 0) {
+            sections.push('\n**Fonctions:**');
+            for (const func of analysis.functions.slice(0, 15)) {
+                let funcLine = `- \`${func.isAsync ? 'async ' : ''}${func.name}(${func.params})\``;
+                if (func.returnType) funcLine += ` → \`${func.returnType}\``;
+                if (func.isExported) funcLine += ' 📤';
+                sections.push(funcLine);
+            }
+            if (analysis.functions.length > 15) {
+                sections.push(`  ... et ${analysis.functions.length - 15} autres fonctions`);
+            }
+        }
+        
+        if (analysis.interfaces.length > 0) {
+            sections.push('\n**Interfaces:**');
+            for (const intf of analysis.interfaces.slice(0, 8)) {
+                sections.push(`- \`interface ${intf.name}\` { ${intf.properties.slice(0, 5).join('; ')}${intf.properties.length > 5 ? '...' : ''} }`);
+            }
+        }
+        
+        if (analysis.types.length > 0) {
+            sections.push('\n**Types:**');
+            for (const t of analysis.types.slice(0, 8)) {
+                sections.push(`- \`type ${t.name}\` = ${t.definition.substring(0, 80)}${t.definition.length > 80 ? '...' : ''}`);
+            }
+        }
+        
+        if (analysis.reactComponents.length > 0) {
+            sections.push('\n**Composants React:**');
+            for (const comp of analysis.reactComponents) {
+                sections.push(`- \`<${comp.name} />\` - Hooks: ${comp.hooks.length > 0 ? comp.hooks.join(', ') : 'aucun'}`);
+            }
+        }
+        
+        if (analysis.apiRoutes.length > 0) {
+            sections.push('\n**Routes API:**');
+            for (const route of analysis.apiRoutes) {
+                sections.push(`- \`${route.method} ${route.path}\``);
+            }
+        }
+        
+        if (analysis.constants.length > 0) {
+            const importantConsts = analysis.constants.filter(c => 
+                c.name.toUpperCase() === c.name || // ALL_CAPS
+                c.name.includes('CONFIG') ||
+                c.name.includes('DEFAULT') ||
+                c.name.includes('OPTIONS')
+            );
+            if (importantConsts.length > 0) {
+                sections.push('\n**Constantes importantes:**');
+                for (const c of importantConsts.slice(0, 5)) {
+                    sections.push(`- \`${c.name}\`${c.type ? `: ${c.type}` : ''} = ${c.value?.substring(0, 50) || '...'}`);
+                }
+            }
+        }
+        
+        if (analysis.todos.length > 0) {
+            sections.push('\n**TODOs/FIXMEs:**');
+            for (const todo of analysis.todos.slice(0, 5)) {
+                sections.push(`- ⚠️ ${todo}`);
+            }
+        }
+        
+        if (analysis.dependencies.length > 0) {
+            const externalDeps = [...new Set(analysis.dependencies)];
+            if (externalDeps.length > 0) {
+                sections.push(`\n**Dépendances externes:** ${externalDeps.slice(0, 10).join(', ')}`);
+            }
+        }
+        
+        return sections.join('\n');
+    }
+
+    /**
+     * Collecte tous les fichiers de code du projet pour analyse approfondie
+     * Priorise les fichiers importants et collecte le maximum possible
+     */
+    private async collectProjectFiles(maxFiles: number = 50): Promise<Array<{ path: string; content: string; language: string }>> {
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders) return [];
+
+        // Extensions de code à analyser (ordre de priorité)
         const codeExtensions = [
-            '.ts', '.tsx', '.js', '.jsx', '.vue', '.svelte',
+            // Priorité haute - fichiers principaux
+            '.ts', '.tsx', '.js', '.jsx',
+            // Frameworks frontend
+            '.vue', '.svelte', '.astro',
+            // Backend et autres langages
             '.py', '.java', '.go', '.rs', '.rb', '.php',
-            '.cs', '.cpp', '.c', '.h', '.hpp'
+            '.cs', '.cpp', '.c', '.h', '.hpp',
+            // Configs importants
+            '.mjs', '.cjs'
         ];
 
         const excludePatterns = [
             '**/node_modules/**', '**/dist/**', '**/build/**', '**/out/**',
             '**/.git/**', '**/coverage/**', '**/__pycache__/**',
             '**/vendor/**', '**/*.min.js', '**/*.bundle.js',
-            '**/package-lock.json', '**/yarn.lock', '**/pnpm-lock.yaml'
+            '**/package-lock.json', '**/yarn.lock', '**/pnpm-lock.yaml',
+            '**/.next/**', '**/.nuxt/**', '**/.svelte-kit/**',
+            '**/webview-dist/**', '**/*.d.ts' // Skip declaration files
         ];
 
-        const files: Array<{ path: string; content: string; language: string }> = [];
+        const allFiles: Array<{ path: string; content: string; language: string; priority: number }> = [];
         
+        // Collecter TOUS les fichiers d'abord
         for (const ext of codeExtensions) {
-            if (files.length >= maxFiles) break;
-            
             const pattern = `**/*${ext}`;
-            const foundFiles = await vscode.workspace.findFiles(pattern, `{${excludePatterns.join(',')}}`);
+            const foundFiles = await vscode.workspace.findFiles(pattern, `{${excludePatterns.join(',')}}`, 200);
             
             for (const file of foundFiles) {
-                if (files.length >= maxFiles) break;
-                
                 try {
                     const content = await vscode.workspace.fs.readFile(file);
                     const text = Buffer.from(content).toString('utf8');
+                    const relativePath = vscode.workspace.asRelativePath(file);
                     
-                    // Skip files that are too large (> 50KB) or too small (< 100 bytes)
-                    if (text.length > 50000 || text.length < 100) continue;
+                    // Skip files that are too large (> 80KB) or too small (< 50 bytes)
+                    if (text.length > 80000 || text.length < 50) continue;
                     
                     // Skip generated files
-                    if (text.includes('// AUTO-GENERATED') || text.includes('/* AUTO-GENERATED')) continue;
+                    if (text.includes('// AUTO-GENERATED') || 
+                        text.includes('/* AUTO-GENERATED') ||
+                        text.includes('// This file is auto-generated')) continue;
+                    
+                    // Skip mock files (sauf pour les tests)
+                    if (relativePath.includes('__mocks__') && !relativePath.includes('.test.')) continue;
                     
                     const language = this.getLanguageFromExtension(ext);
-                    files.push({
-                        path: vscode.workspace.asRelativePath(file),
+                    
+                    // Calculer la priorité du fichier
+                    const priority = this.calculateFilePriority(relativePath, text);
+                    
+                    allFiles.push({
+                        path: relativePath,
                         content: text,
-                        language
+                        language,
+                        priority
                     });
                 } catch {
                     // Skip files that can't be read
@@ -2205,10 +3320,82 @@ Assure-toi que le JSON est valide et peut être parsé.
             }
         }
 
-        // Sort by path to have consistent ordering
-        files.sort((a, b) => a.path.localeCompare(b.path));
+        // Trier par priorité (haute priorité d'abord) puis par chemin
+        allFiles.sort((a, b) => {
+            if (b.priority !== a.priority) return b.priority - a.priority;
+            return a.path.localeCompare(b.path);
+        });
         
-        return files;
+        // Retourner les fichiers les plus importants
+        return allFiles.slice(0, maxFiles).map(({ path, content, language }) => ({ path, content, language }));
+    }
+    
+    /**
+     * Calcule la priorité d'un fichier pour l'analyse
+     */
+    private calculateFilePriority(filePath: string, content: string): number {
+        let priority = 0;
+        const pathLower = filePath.toLowerCase();
+        const fileName = filePath.split('/').pop()?.toLowerCase() || '';
+        
+        // === FICHIERS TRÈS IMPORTANTS (priorité max) ===
+        if (fileName === 'extension.ts' || fileName === 'extension.js') priority += 200;
+        if (fileName === 'index.ts' || fileName === 'index.tsx' || fileName === 'index.js') priority += 150;
+        if (fileName === 'main.ts' || fileName === 'main.tsx' || fileName === 'main.js') priority += 150;
+        if (fileName === 'app.ts' || fileName === 'app.tsx' || fileName === 'app.js') priority += 140;
+        if (fileName === 'server.ts' || fileName === 'server.js') priority += 140;
+        
+        // === DOSSIERS IMPORTANTS ===
+        if (pathLower.includes('/src/')) priority += 50;
+        if (pathLower.includes('/lib/')) priority += 40;
+        if (pathLower.includes('/services/')) priority += 80;
+        if (pathLower.includes('/api/')) priority += 90;
+        if (pathLower.includes('/routes/')) priority += 85;
+        if (pathLower.includes('/controllers/')) priority += 80;
+        if (pathLower.includes('/models/')) priority += 75;
+        if (pathLower.includes('/components/')) priority += 60;
+        if (pathLower.includes('/hooks/')) priority += 55;
+        if (pathLower.includes('/utils/')) priority += 40;
+        if (pathLower.includes('/helpers/')) priority += 40;
+        if (pathLower.includes('/store/') || pathLower.includes('/stores/')) priority += 70;
+        if (pathLower.includes('/state/')) priority += 65;
+        if (pathLower.includes('/providers/')) priority += 60;
+        if (pathLower.includes('/context/')) priority += 55;
+        if (pathLower.includes('/panels/')) priority += 70;
+        
+        // === FICHIERS DE TEST (priorité basse mais pas nulle) ===
+        if (pathLower.includes('.test.') || pathLower.includes('.spec.') || pathLower.includes('__tests__')) {
+            priority = Math.max(priority - 100, 10); // Garder une priorité minimale
+        }
+        
+        // === TYPES ET INTERFACES ===
+        if (pathLower.includes('/types/') || pathLower.includes('/interfaces/')) priority += 45;
+        if (fileName.includes('types') || fileName.includes('interfaces')) priority += 35;
+        
+        // === TAILLE DU FICHIER (préférer fichiers moyens) ===
+        const lines = content.split('\n').length;
+        if (lines >= 100 && lines <= 800) priority += 30; // Fichiers de taille moyenne
+        else if (lines >= 50 && lines <= 1500) priority += 15;
+        else if (lines > 1500) priority += 5; // Gros fichiers moins prioritaires
+        
+        // === CONTENU IMPORTANT ===
+        // Exports - indique un module important
+        const exportCount = (content.match(/^export /gm) || []).length;
+        priority += Math.min(exportCount * 3, 30);
+        
+        // Classes - indique une structure importante
+        if (content.includes('export class') || content.includes('export default class')) priority += 25;
+        
+        // API routes
+        if (/\.(get|post|put|delete|patch)\s*\(/i.test(content)) priority += 40;
+        
+        // React components
+        if (/React\.(FC|Component)|useState|useEffect|return\s*\(?\s*</i.test(content)) priority += 20;
+        
+        // Service patterns
+        if (content.includes('Service') || content.includes('@Injectable')) priority += 30;
+        
+        return priority;
     }
 
     /**
