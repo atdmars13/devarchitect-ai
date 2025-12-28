@@ -5,6 +5,33 @@ Toutes les modifications notables de ce projet sont documentées dans ce fichier
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
+**🇬🇧 [English version](CHANGELOG.en.md)**
+
+## [0.4.0] - 2025-12-28
+
+### ✨ Ajouté
+- **IA Locale Mistral** : Intégration complète avec Ollama
+  - Revue de code avec score qualité, sécurité, performance
+  - Suggestions de refactoring ciblées
+  - Explications pédagogiques du code (débutant à expert)
+  - Génération automatique de tests unitaires (Vitest, Jest, Mocha)
+  - Détection des vulnérabilités sécurité (XSS, injection, etc.)
+  - Vision IA pour analyse de maquettes (llama3.2-vision)
+  - Gestion VRAM avec déchargement des modèles
+- **Rapports Markdown** : Toutes les analyses IA génèrent des rapports dans `.devarchitect-reports/`
+- **10 nouvelles commandes IA** : checkAIStatus, getAvailableModels, unloadModel, reviewCode, etc.
+- **Template projet** : `projects/example-template.json` pour démarrage rapide
+
+### 🔧 Modifié
+- 67 tests unitaires passent (Vitest)
+- UI sidebar améliorée avec panneau outils IA
+- Documentation mise à jour (EN + FR)
+
+### 🗑️ Supprimé
+- Intégration Copilot (Mistral gère toute l'IA en local)
+
+---
+
 ## [0.3.1] - 2025-12-12
 
 ### ✨ Ajouté

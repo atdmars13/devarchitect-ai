@@ -13,16 +13,37 @@
 > Je développe et maintiens ce projet **seul** — votre **patience et compréhension** sont grandement appréciées !  
 > **Contributions et suggestions bienvenues** 🙏
 
-## ✨ Nouveautés v0.4.0 - IA Locale Mistral
+**🇬🇧 [English version](README.en.md)**
 
-- 🧠 **IA Locale** : Intégration complète avec Ollama (Mistral Nemo 12B recommandé)
-- 🔍 **Code Review** : Analyse de code avec score qualité, sécurité, performance
-- 🔧 **Refactoring** : Suggestions de refactoring ciblées par l'IA
-- 📖 **Explication Code** : Explications pédagogiques (débutant à expert)
-- 🧪 **Génération Tests** : Tests unitaires automatiques (Vitest, Jest, Mocha)
-- 🔐 **Analyse Sécurité** : Détection des vulnérabilités (XSS, injection, etc.)
-- 🖼️ **Vision IA** : Analyse de maquettes avec `llama3.2-vision:11b`
-- ⚡ **Gestion VRAM** : Déchargement des modèles pour libérer la mémoire GPU
+---
+
+## 🎯 Qu'est-ce que DevArchitect AI ?
+
+DevArchitect AI est un outil de **gestion de projet intégré** directement dans VS Code qui vous aide à :
+
+- 📋 **Planifier** vos projets (concept, specs, roadmap)
+- 🗓️ **Suivre** la progression avec des phases et milestones
+- 🎨 **Gérer** vos assets et ressources
+- 🧠 **Analyser** votre code avec l'IA locale (pas d'API externe, 100% privé)
+- 📝 **Documenter** avec une base de connaissances intégrée
+
+**Tout reste en local** - vos données ne quittent jamais votre machine.
+
+---
+
+## ✨ Fonctionnalités v0.4.0
+
+### 🧠 IA Locale Mistral
+
+- **Code Review** : Analyse de code avec score qualité, sécurité, performance → génère un rapport Markdown
+- **Refactoring** : Suggestions d'amélioration ciblées → rapport MD
+- **Explication Code** : Explications pédagogiques (débutant à expert) → rapport MD
+- **Génération Tests** : Tests unitaires automatiques (Vitest, Jest, Mocha) → rapport MD
+- **Analyse Sécurité** : Détection des vulnérabilités (XSS, injection, etc.) → rapport MD
+- **Vision IA** : Analyse de maquettes avec `llama3.2-vision:11b`
+- **Gestion VRAM** : Déchargement des modèles pour libérer la mémoire GPU
+
+> Les rapports sont générés dans `.devarchitect-reports/` et s'ouvrent automatiquement.
 
 ### Modèles Ollama Recommandés (RTX 5070 Ti - 16 GB)
 
@@ -30,64 +51,57 @@
 |--------|------|-------|
 | `mistral-nemo:12b` | ~8 GB | ⭐ Recommandé - Code/Complétion |
 | `llama3.2-vision:11b` | ~8 GB | Vision + Multimodal |
+| `ministral:8b` | ~5 GB | Rapide et léger |
 | `minicpm-v` | ~6 GB | Vision léger |
 
-## ✨ Nouveautés v0.3.1
-
-- 🔐 **Types sécurisés** : Communication WebView ↔ Extension entièrement typée
-- 📚 **FAQ externe** : 200 articles chargés en lazy-load depuis JSON
-- ⚙️ **Ollama configurable** : URL, modèle, timeout via settings VS Code
-- ✅ **Validation robuste** : Toutes les entrées Copilot validées
-- 🤖 **8 commandes chat** : `/analyze`, `/plan`, `/add`, `/sync`, `/status`, `/metrics`, `/health`, `/structure`
-
-## ✨ Nouveautés v0.3.0
-
-- 🔄 **Synchronisation Complète** : Analyse automatique du workspace pour mettre à jour TOUS les champs du projet
-- 🖼️ **Scan d'Assets Global** : Détection des assets dans tout le workspace (PNG, JPG, SVG, MP3, etc.)
-- 🎨 **Whiteboard Fullscreen** : Mode plein écran avec formes géométriques, flèches et texte
-- 📊 **Analyse avancée** : Détection architecture, design, tests, CI/CD, équipe
-
-## Fonctionnalités
-
 ### 📋 Planification de Projet
-- **Vision & Concept** : Définissez votre pitch, concept et audience cible
-- **Spécifications Techniques** : Stack tech, moteur de jeu, conformité (GDPR, etc.)
-- **Design & Style** : Palette de couleurs, typographie, direction artistique
 
-### 🗓️ Roadmap & Gestion des Phases
-- Vue **Liste** et **Gantt** pour la planification
-- Gestion des **dépendances** entre phases (avec détection de cycles)
-- Suivi de **progression** en temps réel
-- Support des **jalons** (milestones)
+- **Vision & Concept** : Pitch, concept, audience cible
+- **Spécifications Techniques** : Stack tech, devices, conformité
+- **Design & Style** : Palette de couleurs, typographie, direction artistique
+- **Roadmap** : Phases, dépendances, progression
 
 ### 🎨 Gestion des Assets
-- **Scan automatique** de tous les assets du workspace
+
+- **Scan automatique** du workspace (PNG, JPG, SVG, MP3, etc.)
 - Catégorisation (Sprites, UI, Audio, Mockups, etc.)
 - Workflow de statuts (Concept → Final → Implémenté)
-- Liaison avec les phases de développement
 
 ### 🛠️ Outils de Développement
-- Commandes utiles (npm, git, docker, etc.)
-- **Scan des variables d'environnement** (.env, docker-compose, etc.)
-- Wiki intégré avec **base de connaissances dev** (100+ articles)
-- Configuration automatique du **.gitignore** pour la sécurité
+
+- Commandes utiles (npm, git, docker)
+- Scan des variables d'environnement (.env, docker-compose)
+- Wiki avec base de connaissances (100+ articles)
+- Configuration automatique du .gitignore
 
 ### 🎨 Whiteboard
-- Canvas de dessin libre avec outils (crayon, formes, flèches, texte)
-- Mode **plein écran** pour plus d'espace de travail
-- Export et sauvegarde des dessins
 
-### 🤖 Intégration Copilot Agent
-- Communication bidirectionnelle VS Code ↔ Webview
-- Édition du projet via commandes naturelles
-- **Synchronisation complète** en un clic
-- Contexte projet automatique pour Copilot Chat
+- Canvas de dessin libre avec outils
+- Mode plein écran
+- Export et sauvegarde
 
 ---
 
-## Installation
+## 🚀 Installation
 
-### Extension VS Code
+### Prérequis
+
+1. **VS Code** 1.85+
+2. **Node.js** 18+
+3. **Ollama** (pour l'IA locale) : https://ollama.com
+
+### Installer Ollama et le modèle recommandé
+
+```bash
+# Installer Ollama (Windows/Mac/Linux)
+# Puis télécharger le modèle Mistral
+ollama pull mistral-nemo:12b
+
+# Optionnel : modèle vision
+ollama pull llama3.2-vision:11b
+```
+
+### Installer l'extension
 
 ```bash
 cd extension
@@ -95,121 +109,100 @@ cd extension
 # Installer les dépendances
 npm install
 
-# Compiler l'extension
+# Compiler
 npm run compile
 
-# Exécuter les tests
+# Tests (optionnel)
 npm test
 
-# Packager l'extension (.vsix)
+# Packager (.vsix)
 npm run package
 ```
 
-### Installation de l'extension
-
-1. Packager : `npm run package` dans le dossier `extension/`
-2. Installer le `.vsix` dans VS Code : `Extensions` → `...` → `Install from VSIX`
+Puis dans VS Code : `Extensions` → `...` → `Install from VSIX`
 
 ---
 
-## Structure du Projet
+## 📁 Structure du Projet
 
 ```
 devarchitect-ai/
-├── extension/              # Extension VS Code
-│   ├── package.json        # Manifest de l'extension
+├── extension/                 # Extension VS Code
+│   ├── package.json           # Manifest
 │   ├── src/
-│   │   ├── extension.ts    # Point d'entrée
-│   │   ├── panels/         # Panneau Dashboard
-│   │   ├── providers/      # Sidebar Provider
-│   │   ├── services/       # Services (AI, Project, Workspace)
-│   │   ├── types/          # Types TypeScript
-│   │   └── __tests__/      # Tests unitaires (Vitest)
-│   └── media/              # Ressources (FAQ JSON)
-├── projects/               # Exemples de projets
-├── wiki/                   # Documentation wiki
-├── .github/                # Config GitHub & instructions Copilot
+│   │   ├── extension.ts       # Point d'entrée + commandes IA
+│   │   ├── panels/            # Dashboard Panel
+│   │   ├── providers/         # Sidebar Provider
+│   │   ├── services/          # AI, Project, Workspace services
+│   │   ├── types/             # Types TypeScript
+│   │   └── __tests__/         # Tests Vitest (67 tests)
+│   └── media/                 # FAQ database (JSON)
+├── projects/                  # Projets exemple
+│   └── example-template.json  # Template de projet
+├── .github/
+│   └── copilot-instructions.md
 └── README.md
 ```
 
 ---
 
-## Utilisation avec l'IA Mistral
-
-### IA Locale via Ollama
-
-L'extension utilise Mistral via Ollama pour l'analyse et la complétion automatique des projets :
-
-- **Analyse de code** - Revue automatique, suggestions de refactoring
-- **Complétion projet** - Remplissage automatique des champs manquants
-- **Analyse d'images** - Vision IA pour maquettes (llama3.2-vision)
-- **Génération de tests** - Tests unitaires automatiques
-- **Détection sécurité** - Analyse des vulnérabilités
-
-### Commandes disponibles
+## 🤖 Commandes IA
 
 | Commande | Description |
 |----------|-------------|
-| `devarchitect.checkAIStatus` | Vérifier le statut de l'IA locale |
-| `devarchitect.getAvailableModels` | Lister les modèles disponibles |
-| `devarchitect.unloadModel` | Décharger le modèle actuel de la VRAM |
+| `devarchitect.checkAIStatus` | Vérifier Ollama |
+| `devarchitect.getAvailableModels` | Lister les modèles |
+| `devarchitect.unloadModel` | Décharger le modèle actuel |
 | `devarchitect.unloadAllModels` | Libérer toute la VRAM |
 | `devarchitect.aiComplete` | Complétion IA du projet |
-| `devarchitect.reviewCode` | Revue de code IA |
-| `devarchitect.suggestRefactoring` | Suggestions de refactoring |
-| `devarchitect.generateTests` | Générer des tests unitaires |
+| `devarchitect.reviewCode` | Revue de code → rapport MD |
+| `devarchitect.suggestRefactoring` | Refactoring → rapport MD |
+| `devarchitect.explainCode` | Explication code → rapport MD |
+| `devarchitect.generateTests` | Générer tests → rapport MD |
+| `devarchitect.detectSecurityIssues` | Analyse sécurité → rapport MD |
+| `devarchitect.analyzeImage` | Analyse image (vision) |
 
 ---
 
-## Wiki & Base de Connaissances
+## 📖 Wiki & Base de Connaissances
 
 L'onglet **Wiki** contient :
 
-1. **FAQ Projet** : Documentation spécifique à votre projet
-2. **Base Dev** : 100+ articles couvrant :
-   - VS Code (extensions, débogage, snippets)
-   - Développement Web (React, Angular, Vue, APIs)
-   - Développement Mobile (React Native, Flutter)
-   - Unity & Jeux 2D
-   - Méthodologies (Agile, Scrum, Kanban)
-   - Git & CI/CD
-   - Clean Code & TDD
-   - DevOps (Docker, Kubernetes, Serverless)
+- **FAQ Projet** : Documentation spécifique
+- **Base Dev** : 100+ articles (VS Code, React, Git, Docker, TDD, etc.)
 
 ---
 
-## Types de Projets Supportés
+## 🎮 Types de Projets
 
-### 🌐 Application Web/Mobile
-- Catégories : E-Commerce, Social, SaaS, Productivity...
-- Stack : React, Vue, Angular, Node, Django...
-- Déploiement : Vercel, AWS, Firebase, App Store...
+### 🌐 Web/Mobile
+- E-Commerce, SaaS, Social, Productivity
+- React, Vue, Angular, Node, Django
 
 ### 🎮 Jeu 2D
-- Moteurs : Unity, Godot, Phaser, Defold
-- Genres : RPG, Platformer, Puzzle, Arcade...
-- Styles : Pixel Art, Vector, Hand Drawn...
+- Unity, Godot, Phaser, Defold
+- RPG, Platformer, Puzzle, Arcade
 
 ---
 
-## Contribution
+## 🤝 Contribution
 
-Les contributions sont les bienvenues ! 
+Les contributions sont les bienvenues !
 
 1. Fork le projet
 2. Créez une branche (`git checkout -b feature/amazing-feature`)
-3. Commit vos changements (`git commit -m 'Add amazing feature'`)
+3. Commit (`git commit -m 'Add amazing feature'`)
 4. Push (`git push origin feature/amazing-feature`)
 5. Ouvrez une Pull Request
 
 ---
 
-## Licence
+## 📄 Licence
 
-MIT License
+MIT License - voir [LICENSE](LICENSE)
 
 ---
 
-## Changelog
+## 📋 Changelog
 
-Voir [CHANGELOG.md](CHANGELOG.md) pour l'historique complet des versions.
+Voir [CHANGELOG.md](CHANGELOG.md)

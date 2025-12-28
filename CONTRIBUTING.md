@@ -2,6 +2,8 @@
 
 Merci de votre intérêt pour contribuer à DevArchitect AI ! 🚀
 
+**🇬🇧 [English version](CONTRIBUTING.en.md)**
+
 > **👋 Note importante**  
 > Ce projet est développé et maintenu par **un seul développeur**. C'est ma **première extension VS Code** et mon **premier gros projet open source**.  
 > 
@@ -11,12 +13,26 @@ Merci de votre intérêt pour contribuer à DevArchitect AI ! 🚀
 
 ## 📋 Table des matières
 
-- [Code de Conduite](#code-de-conduite)
-- [Comment Contribuer](#comment-contribuer)
-- [Configuration de l'environnement](#configuration-de-lenvironnement)
-- [Structure du Projet](#structure-du-projet)
-- [Standards de Code](#standards-de-code)
-- [Pull Requests](#pull-requests)
+- [Guide de Contribution](#guide-de-contribution)
+  - [📋 Table des matières](#-table-des-matières)
+  - [Code de Conduite](#code-de-conduite)
+  - [Comment Contribuer](#comment-contribuer)
+    - [🐛 Signaler un Bug](#-signaler-un-bug)
+    - [💡 Proposer une Fonctionnalité](#-proposer-une-fonctionnalité)
+    - [🔧 Soumettre du Code](#-soumettre-du-code)
+  - [Configuration de l'environnement](#configuration-de-lenvironnement)
+    - [Prérequis](#prérequis)
+    - [Installation](#installation)
+    - [Tester l'extension](#tester-lextension)
+  - [Structure du Projet](#structure-du-projet)
+  - [Standards de Code](#standards-de-code)
+    - [Commits Conventionnels](#commits-conventionnels)
+    - [TypeScript](#typescript)
+    - [React](#react)
+    - [Tests](#tests)
+  - [Pull Requests](#pull-requests)
+    - [Checklist](#checklist)
+    - [Review Process](#review-process)
 
 ## Code de Conduite
 
