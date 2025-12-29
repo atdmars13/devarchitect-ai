@@ -27,12 +27,13 @@ export class ProjectProgressService {
 
     /**
      * Analyse la progression réelle des phases du projet
+     * @param projectData - Données du projet (optionnel, sinon utilise le projet courant)
      */
-    public async analyzeProgress(): Promise<PhaseVerificationResult[]> {
+    public async analyzeProgress(projectData?: any): Promise<PhaseVerificationResult[]> {
         // 1. Ensure graph is built
         await this.graphService.buildGraph();
 
-        const project = this.projectService.getCurrentProject();
+        const project = projectData || this.projectService.getCurrentProject();
         if (!project || !project.roadmap) return [];
 
         const results: PhaseVerificationResult[] = [];

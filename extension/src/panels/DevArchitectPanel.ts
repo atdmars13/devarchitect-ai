@@ -1143,6 +1143,36 @@ export class DevArchitectPanel {
                     break;
                 case 'completionStarted':
                     vscode.postMessage({ type: 'showInfo', message: '🤖 Complétion IA en cours...' });
+                    // Visual feedback: show all tabs as pending or something similar could be added here
+                    break;
+                case 'projectCompletionStep':
+                    // Update specific section
+                    if (message.data && currentProject) {
+                        // Merge only the new data
+                        Object.keys(message.data).forEach(key => {
+                            currentProject[key] = message.data[key];
+                        });
+                        renderProject(currentProject);
+
+                        // Switch to the relevant tab if needed, or show a toast
+                        const sectionToTab = {
+                            'vision': 'vision',
+                            'specs': 'specs',
+                            'design': 'design',
+                            'roadmap': 'roadmap',
+                            'assets': 'assets'
+                        };
+                        const tabId = sectionToTab[message.section];
+                        if (tabId) {
+                            // Highlight the tab momentarily or switch? switching might be annoying if user is reading.
+                            // Let's just update the UI and maybe show a small notification or flash the tab.
+                            const tabBtn = document.querySelector('.tab[data-tab="' + tabId + '"]');
+                            if (tabBtn) {
+                                tabBtn.style.color = 'var(--accent-green)';
+                                setTimeout(() => tabBtn.style.color = '', 1000);
+                            }
+                        }
+                    }
                     break;
                 case 'projectCompletion':
                     if (message.error) {
@@ -1191,14 +1221,22 @@ export class DevArchitectPanel {
             const ollamaAvailable = await this._aiCompletionService.isOllamaAvailable();
             const model = ollamaAvailable ? await this._aiCompletionService.selectBestModel() : null;
 
-            // Générer la complétion (IA ou fallback)
-            const completion = await this._aiCompletionService.completeProject(currentProjectData);
+            // Utiliser la complétion séquentielle pour des mises à jour progressives
+            const generator = this._aiCompletionService.completeProjectSequential(currentProjectData);
 
-            // Envoyer la complétion au webview
-            void this._panel.webview.postMessage({
-                type: 'projectCompletion',
-                data: completion,
-            });
+            let fullCompletion = {};
+
+            for await (const step of generator) {
+                // Mettre à jour les données complètes
+                fullCompletion = { ...fullCompletion, ...step.data };
+
+                // Envoyer la mise à jour partielle au webview
+                void this._panel.webview.postMessage({
+                    type: 'projectCompletionStep',
+                    section: step.section,
+                    data: step.data
+                });
+            }
 
             // Message informatif
             const source = model 
@@ -1206,7 +1244,7 @@ export class DevArchitectPanel {
                 : '📁 Analyse workspace';
             
             vscode.window.showInformationMessage(
-                `✨ Complétion générée via ${source}`
+                `✨ Complétion terminée via ${source}`
             );
 
         } catch (error: any) {

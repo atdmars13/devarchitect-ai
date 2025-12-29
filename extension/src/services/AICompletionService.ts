@@ -5,6 +5,8 @@ import { WorkspaceAnalyzerService, WorkspaceAnalysis } from './WorkspaceAnalyzer
 import { PersistenceService, CompletionHistoryEntry, UserFeedback } from './PersistenceService';
 import { AIClientService, LLMModelInfo, ModelCapabilities, OllamaResponse, OllamaConfig } from './ai/AIClientService';
 import { DependencyGraphService } from './analysis/DependencyGraphService';
+import { ProjectProgressService } from './project/ProjectProgressService';
+import { ProjectService } from './ProjectService';
 
 export interface AICompletionResult {
     name?: string;
@@ -119,6 +121,7 @@ export class AICompletionService {
     private persistenceService: PersistenceService;
     private aiClient: AIClientService;
     private dependencyGraph: DependencyGraphService;
+    private progressService: ProjectProgressService;
     
     // Cache pour les résultats d'analyse IA (évite les appels répétés)
     private static analysisCache: Map<string, { result: AICompletionResult; timestamp: number }> = new Map();
@@ -129,6 +132,13 @@ export class AICompletionService {
         this.persistenceService = PersistenceService.getInstance();
         this.aiClient = AIClientService.getInstance();
         this.dependencyGraph = new DependencyGraphService();
+        // Hack: ProjectService needs context, but here we might not have it.
+        // For ProjectProgressService we pass a "null" ProjectService initially or fetch singleton if possible.
+        // But since we pass data manually, the internal project service might not be used.
+        // A cleaner way is to Dependency Inject ProjectService into AICompletionService.
+        // For now, we will construct it with a dummy context as we pass data manually.
+        // @ts-ignore
+        this.progressService = new ProjectProgressService(this.dependencyGraph, { getCurrentProject: () => null } as any);
     }
 
     /**
@@ -584,33 +594,181 @@ Si aucune vulnérabilité, retourne un tableau vide: []`;
      * Génère la complétion du projet
      */
     public async completeProject(currentProject: any): Promise<AICompletionResult> {
-        // 1. Analyser le workspace pour avoir du contexte
+        // Legacy method wrapper
+        let finalResult: AICompletionResult = {};
+        for await (const step of this.completeProjectSequential(currentProject)) {
+            finalResult = { ...finalResult, ...step.data };
+        }
+        return finalResult;
+    }
+
+    /**
+     * Complétion séquentielle étape par étape
+     */
+    public async *completeProjectSequential(currentProject: any): AsyncGenerator<{ section: string, data: any }, void, unknown> {
         const workspaceAnalysis = await this.workspaceAnalyzer.analyzeWorkspace();
+        const model = await this.selectBestModel();
         
-        // 2. Vérifier si Ollama est disponible
-        const ollamaAvailable = await this.isOllamaAvailable();
+        if (!model) {
+            // Fallback no-AI
+            yield { section: 'complete', data: this.completeFromAnalysis(currentProject, workspaceAnalysis) };
+            return;
+        }
+
+        // 1. Vision (Name, Concept, Pitch, Audience)
+        const visionData = await this.completeVision(currentProject, workspaceAnalysis, model);
+        yield { section: 'vision', data: visionData };
+        const projectWithVision = { ...currentProject, ...visionData };
+
+        // 2. Specs (Tech Stack, Architecture)
+        const specsData = await this.completeSpecs(projectWithVision, workspaceAnalysis, model);
+        yield { section: 'specs', data: specsData };
+        const projectWithSpecs = { ...projectWithVision, ...specsData };
+
+        // 3. Design (UI/UX, Style)
+        const designData = await this.completeDesign(projectWithSpecs, workspaceAnalysis, model);
+        yield { section: 'design', data: designData };
+        const projectWithDesign = { ...projectWithSpecs, ...designData };
+
+        // 4. Roadmap (Real progress tracking)
+        const roadmapData = await this.completeRoadmap(projectWithDesign, workspaceAnalysis, model);
+        yield { section: 'roadmap', data: roadmapData };
+        const projectWithRoadmap = { ...projectWithDesign, ...roadmapData };
+
+        // 5. Assets & DevTools (Scan based)
+        const assetsData = await this.completeAssetsAndTools(projectWithRoadmap, workspaceAnalysis);
+        yield { section: 'assets', data: assetsData };
+    }
+
+    private async completeVision(project: any, analysis: WorkspaceAnalysis | null, model: string): Promise<Partial<AICompletionResult>> {
+        // Skip if all fields are present and substantial
+        if (project.name && project.concept && project.elevatorPitch && project.targetAudience) {
+            return {};
+        }
+
+        const prompt = `Analyse ce projet et complète la section VISION.
+Nom actuel: ${project.name || analysis?.name || 'Inconnu'}
+Description fichiers: ${analysis?.concept || 'N/A'}
+
+Génère un JSON avec:
+{
+  "name": "Nom du projet",
+  "concept": "Concept détaillé (3-4 phrases)",
+  "elevatorPitch": "Phrase d'accroche percutante",
+  "targetAudience": "Public cible précis",
+  "type": "WEB_MOBILE" | "GAME_2D"
+}`;
+        try {
+            const response = await this.aiClient.generate(prompt, model);
+            const json = JSON.parse(response.replace(/```json/g, '').replace(/```/g, '').trim());
+            return json;
+        } catch (e) {
+            return {
+                name: analysis?.name,
+                concept: analysis?.concept,
+                type: analysis?.type
+            };
+        }
+    }
+
+    private async completeSpecs(project: any, analysis: WorkspaceAnalysis | null, model: string): Promise<Partial<AICompletionResult>> {
+        // Use dependency graph to get real stack
+        await this.dependencyGraph.buildGraph();
+
+        const prompt = `Complète les spécifications techniques.
+Stack détectée: ${JSON.stringify(analysis?.specs)}
+Architecture actuelle: ${project.architecture || 'N/A'}
+
+Génère un JSON:
+{
+  "specs": { ... },
+  "architecture": "Description détaillée de l'architecture logicielle (patterns, flux de données)"
+}`;
+        try {
+            const response = await this.aiClient.generate(prompt, model);
+            const json = JSON.parse(response.replace(/```json/g, '').replace(/```/g, '').trim());
+            return json;
+        } catch (e) {
+            return { specs: analysis?.specs };
+        }
+    }
+
+    private async completeDesign(project: any, analysis: WorkspaceAnalysis | null, model: string): Promise<Partial<AICompletionResult>> {
+        const prompt = `Complète la section DESIGN (UI/UX).
+Type de projet: ${project.type}
+Concept: ${project.concept}
+
+Génère un JSON:
+{
+  "design": {
+    "artDirection": "Style visuel (ex: Minimaliste, Cyberpunk)",
+    "uiTheme": "Dark/Light",
+    "primaryColor": "#hex",
+    "secondaryColor": "#hex",
+    "accentColor": "#hex",
+    "fontHeading": "Nom police",
+    "fontBody": "Nom police"
+  }
+}`;
+        try {
+            const response = await this.aiClient.generate(prompt, model);
+            const json = JSON.parse(response.replace(/```json/g, '').replace(/```/g, '').trim());
+            return json;
+        } catch (e) {
+            return { design: analysis?.design };
+        }
+    }
+
+    private async completeRoadmap(project: any, analysis: WorkspaceAnalysis | null, model: string): Promise<Partial<AICompletionResult>> {
+        // 1. Generate roadmap items with AI if missing
+        let roadmap = project.roadmap || [];
         
-        if (ollamaAvailable) {
-            // Préférer un modèle long contexte si beaucoup de données
-            const hasLargeContext = (workspaceAnalysis?.dependencies?.length || 0) > 20 || 
-                                    (workspaceAnalysis?.fileStats?.totalFiles || 0) > 50;
+        if (roadmap.length === 0) {
+            const prompt = `Génère une roadmap de développement pour ce projet ${project.type}.
+            Concept: ${project.concept}
             
-            const model = hasLargeContext 
-                ? (await this.selectLongContextModel()) || (await this.selectBestModel())
-                : await this.selectBestModel();
-                
-            if (model) {
-                try {
-                    console.log(`[AICompletionService] Using model: ${model} (large context: ${hasLargeContext})`);
-                    return await this.completeWithAI(currentProject, workspaceAnalysis, model);
-                } catch (error) {
-                    console.error('AI completion failed, using fallback:', error);
-                }
+            JSON attendu:
+            {
+              "roadmap": [
+                { "title": "Phase 1", "description": "Détails", "priority": "Haute" }
+              ]
+            }`;
+            try {
+                const response = await this.aiClient.generate(prompt, model);
+                const json = JSON.parse(response.replace(/```json/g, '').replace(/```/g, '').trim());
+                roadmap = json.roadmap || [];
+            } catch (e) {
+                roadmap = analysis?.suggestedPhases || [];
             }
         }
 
-        // 3. Fallback: utiliser l'analyse du workspace
-        return this.completeFromAnalysis(currentProject, workspaceAnalysis);
+        // 2. Verify progress with ProjectProgressService using REAL code analysis
+        // We pass the partial project object to analyzeProgress
+        const verificationResults = await this.progressService.analyzeProgress({ ...project, roadmap });
+
+        // Merge verification results
+        const updatedRoadmap = roadmap.map((phase: any) => {
+            const verif = verificationResults.find(v => v.phaseId === phase.id) ||
+                          verificationResults.find(v => v.phaseId === phase.title); // Fallback match
+            if (verif) {
+                return {
+                    ...phase,
+                    progress: verif.progress,
+                    status: verif.status
+                };
+            }
+            return phase;
+        });
+
+        return { roadmap: updatedRoadmap };
+    }
+
+    private async completeAssetsAndTools(project: any, analysis: WorkspaceAnalysis | null): Promise<Partial<AICompletionResult>> {
+        return {
+            assets: analysis?.assets || [],
+            commands: analysis?.commands || [],
+            variables: analysis?.variables || []
+        };
     }
 
     /**
