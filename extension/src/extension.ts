@@ -4,6 +4,9 @@ import { DevArchitectPanel } from './panels/DevArchitectPanel';
 import { SidebarProvider } from './providers/SidebarProvider';
 import { ProjectService } from './services/ProjectService';
 import { AICompletionService } from './services/AICompletionService';
+import { ProjectProgressService } from './services/project/ProjectProgressService';
+import { DependencyGraphService } from './services/analysis/DependencyGraphService';
+import { SecurityAnalyzerService } from './services/analysis/SecurityAnalyzerService';
 
 /**
  * Crée un fichier de rapport Markdown dans le dossier .devarchitect-reports
@@ -48,6 +51,11 @@ export function activate(context: vscode.ExtensionContext) {
     // Initialize services
     const projectService = new ProjectService(context);
     const aiService = new AICompletionService();
+
+    // Initialize new advanced services
+    const dependencyGraph = new DependencyGraphService();
+    const progressService = new ProjectProgressService(dependencyGraph, projectService);
+    const securityAnalyzer = new SecurityAnalyzerService(dependencyGraph);
 
     // Register Sidebar Provider
     const sidebarProvider = new SidebarProvider(context.extensionUri, projectService);
@@ -708,6 +716,91 @@ ${sortedIssues.length > 0 ? sortedIssues.map((issue: any, i: number) => {
             } catch (error) {
                 void vscode.window.showErrorMessage(`❌ Erreur: ${error instanceof Error ? error.message : String(error)}`);
                 return null;
+            }
+        })
+    );
+
+    // Command: Deep Progress Analysis
+    context.subscriptions.push(
+        vscode.commands.registerCommand('devarchitect.analyzeProgress', async () => {
+            try {
+                void vscode.window.showInformationMessage('🔍 Analyse approfondie de la progression...');
+
+                const results = await progressService.analyzeProgress();
+
+                // Update project with results
+                const project = projectService.getCurrentProject();
+                if (project && project.roadmap) {
+                    let updatedCount = 0;
+                    project.roadmap = project.roadmap.map((phase: any) => {
+                        const result = results.find(r => r.phaseId === phase.id);
+                        if (result) {
+                            updatedCount++;
+                            return {
+                                ...phase,
+                                progress: result.progress,
+                                status: result.status,
+                                // Store evidence in a new field if possible, or append to description
+                                description: phase.description + (result.evidence.length ? `\n\n**Evidence:**\n${result.evidence.join('\n')}` : '')
+                            };
+                        }
+                        return phase;
+                    });
+
+                    if (updatedCount > 0) {
+                        await projectService.saveProject();
+                        // Refresh dashboard
+                        DevArchitectPanel.createOrShow(context.extensionUri, projectService);
+                        void vscode.window.showInformationMessage(`✅ Progression mise à jour pour ${updatedCount} phases`);
+                    } else {
+                        void vscode.window.showInformationMessage('Aucune mise à jour de phase nécessaire');
+                    }
+                }
+            } catch (error) {
+                void vscode.window.showErrorMessage(`❌ Erreur d'analyse: ${error instanceof Error ? error.message : String(error)}`);
+            }
+        })
+    );
+
+    // Command: Deep Security Audit (Targeted)
+    context.subscriptions.push(
+        vscode.commands.registerCommand('devarchitect.deepSecurityAudit', async () => {
+            try {
+                void vscode.window.showInformationMessage('🔐 Audit de sécurité ciblé en cours...');
+
+                const issues = await securityAnalyzer.performDeepAudit();
+
+                if (issues.length === 0) {
+                    void vscode.window.showInformationMessage('✅ Aucune vulnérabilité critique détectée');
+                    return;
+                }
+
+                // Generate Report
+                const reportContent = `# 🔐 Rapport d'Audit de Sécurité Ciblé
+
+**Date:** ${new Date().toLocaleString()}
+**Fichiers analysés:** ${new Set(issues.map(i => i.file)).size}
+
+---
+
+## 🚨 Vulnérabilités Détectées (${issues.length})
+
+${issues.map((issue, i) => `
+### ${i + 1}. [${issue.severity.toUpperCase()}] ${issue.type}
+**Fichier:** \`${issue.file}\`
+**Ligne:** ${issue.line || 'N/A'}
+
+> ${issue.description}
+
+**💡 Recommandation:**
+${issue.recommendation}
+`).join('\n---\n')}
+`;
+                await createAndOpenReport('audit-securite-cible', reportContent);
+                void vscode.window.showWarningMessage(`⚠️ ${issues.length} vulnérabilités potentielles détectées`);
+
+            } catch (error) {
+                void vscode.window.showErrorMessage(`❌ Erreur d'audit: ${error instanceof Error ? error.message : String(error)}`);
             }
         })
     );

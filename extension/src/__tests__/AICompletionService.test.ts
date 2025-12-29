@@ -57,18 +57,21 @@ describe('AICompletionService', () => {
     describe('model registry', () => {
         it('should have Mistral models with highest priority', () => {
             const serviceAny = service as any;
-            const firstModels = serviceAny.fallbackModels.slice(0, 5);
+            const clientAny = serviceAny.aiClient as any;
+            const firstModels = clientAny.fallbackModels.slice(0, 5);
             
             expect(firstModels.every((m: string) => 
                 m.includes('codestral') || 
                 m.includes('mistral') || 
-                m.includes('pixtral')
+                m.includes('pixtral') ||
+                m.includes('ministral')
             )).toBe(true);
         });
 
         it('should have vision-capable models in registry', () => {
             const serviceAny = service as any;
-            const visionModels = serviceAny.modelRegistry.filter(
+            const clientAny = serviceAny.aiClient as any;
+            const visionModels = clientAny.modelRegistry.filter(
                 (m: any) => m.capabilities.vision
             );
             
@@ -78,7 +81,8 @@ describe('AICompletionService', () => {
 
         it('should have code-generation capable models', () => {
             const serviceAny = service as any;
-            const codeModels = serviceAny.modelRegistry.filter(
+            const clientAny = serviceAny.aiClient as any;
+            const codeModels = clientAny.modelRegistry.filter(
                 (m: any) => m.capabilities.codeGeneration
             );
             
@@ -87,7 +91,8 @@ describe('AICompletionService', () => {
 
         it('should categorize models by provider', () => {
             const serviceAny = service as any;
-            const modelsByProvider = serviceAny.modelRegistry.reduce(
+            const clientAny = serviceAny.aiClient as any;
+            const modelsByProvider = clientAny.modelRegistry.reduce(
                 (acc: Record<string, number>, m: any) => {
                     acc[m.provider] = (acc[m.provider] || 0) + 1;
                     return acc;
@@ -103,7 +108,8 @@ describe('AICompletionService', () => {
 
         it('should have long context models', () => {
             const serviceAny = service as any;
-            const longContextModels = serviceAny.modelRegistry.filter(
+            const clientAny = serviceAny.aiClient as any;
+            const longContextModels = clientAny.modelRegistry.filter(
                 (m: any) => m.capabilities.longContext
             );
             
@@ -112,8 +118,9 @@ describe('AICompletionService', () => {
 
         it('should have correct maxTokens for models', () => {
             const serviceAny = service as any;
+            const clientAny = serviceAny.aiClient as any;
             
-            serviceAny.modelRegistry.forEach((model: any) => {
+            clientAny.modelRegistry.forEach((model: any) => {
                 expect(model.capabilities.maxTokens).toBeGreaterThan(0);
                 expect(model.capabilities.maxTokens).toBeLessThanOrEqual(128000);
             });

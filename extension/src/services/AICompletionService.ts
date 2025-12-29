@@ -1,9 +1,10 @@
-import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { WorkspaceAnalyzerService, WorkspaceAnalysis } from './WorkspaceAnalyzerService';
 import { PersistenceService, CompletionHistoryEntry, UserFeedback } from './PersistenceService';
+import { AIClientService, LLMModelInfo, ModelCapabilities, OllamaResponse, OllamaConfig } from './ai/AIClientService';
+import { DependencyGraphService } from './analysis/DependencyGraphService';
 
 export interface AICompletionResult {
     name?: string;
@@ -116,85 +117,18 @@ export interface SecurityIssue {
 export class AICompletionService {
     private workspaceAnalyzer: WorkspaceAnalyzerService;
     private persistenceService: PersistenceService;
+    private aiClient: AIClientService;
+    private dependencyGraph: DependencyGraphService;
     
     // Cache pour les résultats d'analyse IA (évite les appels répétés)
     private static analysisCache: Map<string, { result: AICompletionResult; timestamp: number }> = new Map();
     private static readonly ANALYSIS_CACHE_TTL_MS = 300000; // 5 minutes
-    
-    /**
-     * Modèles LLM avec leurs capacités détaillées
-     * Ordre de préférence: Mistral AI (vision + code) > Qwen > DeepSeek > Meta
-     */
-    private modelRegistry: LLMModelInfo[] = [
-        // === MISTRAL AI (Priorité maximale) ===
-        { name: 'codestral:latest', provider: 'mistral', capabilities: { vision: false, codeGeneration: true, longContext: true, reasoning: true, maxTokens: 32000 } },
-        { name: 'codestral:22b', provider: 'mistral', capabilities: { vision: false, codeGeneration: true, longContext: true, reasoning: true, maxTokens: 32000 } },
-        { name: 'mistral-large:latest', provider: 'mistral', capabilities: { vision: false, codeGeneration: true, longContext: true, reasoning: true, maxTokens: 128000 } },
-        { name: 'mistral-large:123b', provider: 'mistral', capabilities: { vision: false, codeGeneration: true, longContext: true, reasoning: true, maxTokens: 128000 } },
-        { name: 'pixtral-large:latest', provider: 'mistral', capabilities: { vision: true, codeGeneration: true, longContext: true, reasoning: true, maxTokens: 128000 } },
-        { name: 'pixtral:12b', provider: 'mistral', capabilities: { vision: true, codeGeneration: false, longContext: false, reasoning: false, maxTokens: 32000 } },
-        { name: 'ministral:8b', provider: 'mistral', capabilities: { vision: false, codeGeneration: true, longContext: false, reasoning: false, maxTokens: 32000 } },
-        { name: 'mistral:latest', provider: 'mistral', capabilities: { vision: false, codeGeneration: true, longContext: false, reasoning: false, maxTokens: 32000 } },
-        { name: 'mistral:7b', provider: 'mistral', capabilities: { vision: false, codeGeneration: true, longContext: false, reasoning: false, maxTokens: 32000 } },
-        { name: 'mistral-nemo:latest', provider: 'mistral', capabilities: { vision: false, codeGeneration: true, longContext: true, reasoning: true, maxTokens: 128000 } },
-        
-        // === QWEN (Fallback haute qualité) ===
-        { name: 'qwen2.5-coder:32b-instruct-q4_K_M', provider: 'qwen', capabilities: { vision: false, codeGeneration: true, longContext: true, reasoning: true, maxTokens: 32000 } },
-        { name: 'qwen2.5-coder:32b', provider: 'qwen', capabilities: { vision: false, codeGeneration: true, longContext: true, reasoning: true, maxTokens: 32000 } },
-        { name: 'qwen2.5-coder:14b', provider: 'qwen', capabilities: { vision: false, codeGeneration: true, longContext: false, reasoning: true, maxTokens: 32000 } },
-        { name: 'qwen2.5-coder:14b-instruct', provider: 'qwen', capabilities: { vision: false, codeGeneration: true, longContext: false, reasoning: true, maxTokens: 32000 } },
-        { name: 'qwen2.5-coder:7b', provider: 'qwen', capabilities: { vision: false, codeGeneration: true, longContext: false, reasoning: false, maxTokens: 32000 } },
-        { name: 'qwen2.5-coder', provider: 'qwen', capabilities: { vision: false, codeGeneration: true, longContext: false, reasoning: false, maxTokens: 32000 } },
-        { name: 'qwen2.5:72b', provider: 'qwen', capabilities: { vision: false, codeGeneration: true, longContext: true, reasoning: true, maxTokens: 32000 } },
-        { name: 'qwen2-vl:7b', provider: 'qwen', capabilities: { vision: true, codeGeneration: false, longContext: false, reasoning: false, maxTokens: 32000 } },
-        
-        // === DEEPSEEK ===
-        { name: 'deepseek-coder-v2:16b', provider: 'deepseek', capabilities: { vision: false, codeGeneration: true, longContext: true, reasoning: true, maxTokens: 128000 } },
-        { name: 'deepseek-coder-v2', provider: 'deepseek', capabilities: { vision: false, codeGeneration: true, longContext: false, reasoning: true, maxTokens: 32000 } },
-        
-        // === META (Fallback) ===
-        { name: 'llama3.2:latest', provider: 'meta', capabilities: { vision: false, codeGeneration: false, longContext: false, reasoning: true, maxTokens: 32000 } },
-        { name: 'llama3.2-vision:11b', provider: 'meta', capabilities: { vision: true, codeGeneration: false, longContext: false, reasoning: true, maxTokens: 32000 } },
-        { name: 'llama3.2-vision:latest', provider: 'meta', capabilities: { vision: true, codeGeneration: false, longContext: false, reasoning: true, maxTokens: 32000 } },
-        { name: 'codellama:latest', provider: 'meta', capabilities: { vision: false, codeGeneration: true, longContext: false, reasoning: false, maxTokens: 16000 } },
-        
-        // === OTHER (Vision models) ===
-        { name: 'minicpm-v:latest', provider: 'other', capabilities: { vision: true, codeGeneration: false, longContext: false, reasoning: false, maxTokens: 8000 } },
-        { name: 'minicpm-v', provider: 'other', capabilities: { vision: true, codeGeneration: false, longContext: false, reasoning: false, maxTokens: 8000 } },
-    ];
-    
-    // Liste simplifiée pour compatibilité (ordre de préférence)
-    private fallbackModels = [
-        // Mistral AI - Priorité maximale (code + vision + long context)
-        'codestral:latest',
-        'codestral:22b',
-        'mistral-large:latest',
-        'mistral-large:123b',
-        'pixtral-large:latest',
-        'pixtral:12b',
-        'ministral:8b',
-        'mistral-nemo:latest',
-        'mistral:latest',
-        'mistral:7b',
-        // Qwen - Excellent pour le code
-        'qwen2.5-coder:32b-instruct-q4_K_M',
-        'qwen2.5-coder:32b',
-        'qwen2.5-coder:14b',
-        'qwen2.5-coder:14b-instruct',
-        'qwen2.5-coder:7b',
-        'qwen2.5-coder',
-        'qwen2.5:72b',
-        // DeepSeek
-        'deepseek-coder-v2:16b',
-        'deepseek-coder-v2',
-        // Meta Llama
-        'llama3.2:latest',
-        'codellama:latest'
-    ];
 
     constructor() {
         this.workspaceAnalyzer = new WorkspaceAnalyzerService();
         this.persistenceService = PersistenceService.getInstance();
+        this.aiClient = AIClientService.getInstance();
+        this.dependencyGraph = new DependencyGraphService();
     }
 
     /**
@@ -240,395 +174,21 @@ export class AICompletionService {
         };
     }
 
-    /**
-     * Récupère la configuration Ollama depuis les settings VS Code
-     * Modèle par défaut: mistral-nemo:12b - optimisé pour RTX 5070 Ti (16 GB VRAM, ~8 GB utilisé)
-     */
-    private getOllamaConfig(): OllamaConfig {
-        const config = vscode.workspace.getConfiguration('devarchitect.ollama');
-        return {
-            baseUrl: config.get<string>('baseUrl', 'http://127.0.0.1:11434'),
-            preferredModel: config.get<string>('preferredModel', 'mistral-nemo:12b'),
-            timeout: config.get<number>('timeout', 120000),
-            enabled: config.get<boolean>('enabled', true)
-        };
+    // Proxy methods to AIClientService
+    public async isOllamaAvailable(): Promise<boolean> { return this.aiClient.isOllamaAvailable(); }
+    public async listModels(): Promise<string[]> { return this.aiClient.listModels(); }
+    public async unloadModel(model?: string): Promise<{ success: boolean; message: string; freedModel?: string }> {
+        const result = await this.aiClient.unloadModel(model);
+        return { success: result.success, message: result.message, freedModel: model };
     }
-
-    /**
-     * Vérifie si Ollama est disponible
-     */
-    public async isOllamaAvailable(): Promise<boolean> {
-        const config = this.getOllamaConfig();
-        
-        // Si désactivé par l'utilisateur, retourner false
-        if (!config.enabled) {
-            return false;
-        }
-        
-        return new Promise((resolve) => {
-            const req = http.request(`${config.baseUrl}/api/tags`, { method: 'GET', timeout: 2000 }, (res) => {
-                resolve(res.statusCode === 200);
-            });
-            req.on('error', () => resolve(false));
-            req.on('timeout', () => { req.destroy(); resolve(false); });
-            req.end();
-        });
-    }
-
-    /**
-     * Liste les modèles disponibles dans Ollama
-     */
-    public async listModels(): Promise<string[]> {
-        const config = this.getOllamaConfig();
-        
-        return new Promise((resolve) => {
-            const req = http.request(`${config.baseUrl}/api/tags`, { method: 'GET' }, (res) => {
-                let data = '';
-                res.on('data', chunk => data += chunk);
-                res.on('end', () => {
-                    try {
-                        const json = JSON.parse(data);
-                        const models = json.models?.map((m: any) => m.name) || [];
-                        resolve(models);
-                    } catch {
-                        resolve([]);
-                    }
-                });
-            });
-            req.on('error', () => resolve([]));
-            req.end();
-        });
-    }
-    
-    /**
-     * Décharge un modèle de la VRAM pour libérer la mémoire
-     * Utilise l'API Ollama avec keep_alive: 0 pour forcer le déchargement immédiat
-     * @param modelName - Nom du modèle à décharger (optionnel, utilise le modèle actuel si non spécifié)
-     */
-    public async unloadModel(modelName?: string): Promise<{ success: boolean; message: string; freedModel?: string }> {
-        const config = this.getOllamaConfig();
-        const model = modelName || config.preferredModel;
-        
-        return new Promise((resolve) => {
-            // Envoyer un prompt vide avec keep_alive: 0 pour décharger le modèle
-            const postData = JSON.stringify({
-                model,
-                prompt: '',
-                keep_alive: 0  // Force le déchargement immédiat
-            });
-
-            const req = http.request(`${config.baseUrl}/api/generate`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Content-Length': Buffer.byteLength(postData)
-                },
-                timeout: 5000
-            }, (res) => {
-                let data = '';
-                res.on('data', chunk => data += chunk);
-                res.on('end', () => {
-                    if (res.statusCode === 200) {
-                        console.log(`[AICompletionService] Model ${model} unloaded from VRAM`);
-                        resolve({
-                            success: true,
-                            message: `Modèle ${model} déchargé de la VRAM`,
-                            freedModel: model
-                        });
-                    } else {
-                        resolve({
-                            success: false,
-                            message: `Impossible de décharger ${model}: ${res.statusCode}`
-                        });
-                    }
-                });
-            });
-
-            req.on('error', (e) => {
-                resolve({
-                    success: false,
-                    message: `Erreur lors du déchargement: ${e.message}`
-                });
-            });
-            
-            req.on('timeout', () => {
-                req.destroy();
-                resolve({
-                    success: false,
-                    message: 'Timeout lors du déchargement'
-                });
-            });
-            
-            req.write(postData);
-            req.end();
-        });
-    }
-    
-    /**
-     * Décharge tous les modèles actuellement chargés en VRAM
-     */
-    public async unloadAllModels(): Promise<{ success: boolean; message: string; unloadedCount: number }> {
-        const config = this.getOllamaConfig();
-        
-        // Récupérer les modèles en cours d'exécution via l'API ps
-        return new Promise((resolve) => {
-            const req = http.request(`${config.baseUrl}/api/ps`, { method: 'GET', timeout: 5000 }, (res) => {
-                let data = '';
-                res.on('data', chunk => data += chunk);
-                res.on('end', async () => {
-                    try {
-                        const json = JSON.parse(data);
-                        const runningModels: string[] = json.models?.map((m: any) => m.name) || [];
-                        
-                        if (runningModels.length === 0) {
-                            resolve({
-                                success: true,
-                                message: 'Aucun modèle chargé en VRAM',
-                                unloadedCount: 0
-                            });
-                            return;
-                        }
-                        
-                        // Décharger chaque modèle
-                        let unloadedCount = 0;
-                        for (const model of runningModels) {
-                            const result = await this.unloadModel(model);
-                            if (result.success) unloadedCount++;
-                        }
-                        
-                        resolve({
-                            success: true,
-                            message: `${unloadedCount}/${runningModels.length} modèles déchargés`,
-                            unloadedCount
-                        });
-                    } catch {
-                        resolve({
-                            success: false,
-                            message: 'Impossible de lister les modèles chargés',
-                            unloadedCount: 0
-                        });
-                    }
-                });
-            });
-            req.on('error', () => resolve({ success: false, message: 'Ollama non accessible', unloadedCount: 0 }));
-            req.on('timeout', () => { req.destroy(); resolve({ success: false, message: 'Timeout', unloadedCount: 0 }); });
-            req.end();
-        });
-    }
-    
-    /**
-     * Obtient les modèles actuellement chargés en VRAM avec leur utilisation mémoire
-     */
-    public async getLoadedModels(): Promise<{ models: Array<{ name: string; size: number; sizeVram: number }>; totalVram: number }> {
-        const config = this.getOllamaConfig();
-        
-        return new Promise((resolve) => {
-            const req = http.request(`${config.baseUrl}/api/ps`, { method: 'GET', timeout: 5000 }, (res) => {
-                let data = '';
-                res.on('data', chunk => data += chunk);
-                res.on('end', () => {
-                    try {
-                        const json = JSON.parse(data);
-                        const models = (json.models || []).map((m: any) => ({
-                            name: m.name || 'unknown',
-                            size: m.size || 0,
-                            sizeVram: m.size_vram || 0
-                        }));
-                        
-                        const totalVram = models.reduce((sum: number, m: any) => sum + (m.sizeVram || 0), 0);
-                        
-                        resolve({ models, totalVram });
-                    } catch {
-                        resolve({ models: [], totalVram: 0 });
-                    }
-                });
-            });
-            req.on('error', () => resolve({ models: [], totalVram: 0 }));
-            req.on('timeout', () => { req.destroy(); resolve({ models: [], totalVram: 0 }); });
-            req.end();
-        });
-    }
-
-    /**
-     * Sélectionne le meilleur modèle disponible
-     */
-    public async selectBestModel(): Promise<string | null> {
-        const config = this.getOllamaConfig();
-        const available = await this.listModels();
-        
-        if (available.length === 0) return null;
-
-        // D'abord vérifier si le modèle préféré de l'utilisateur est disponible
-        const preferredFound = available.find(m => m.startsWith(config.preferredModel));
-        if (preferredFound) return preferredFound;
-
-        // Sinon chercher dans l'ordre de préférence des fallbacks
-        for (const preferred of this.fallbackModels) {
-            const found = available.find(m => m.startsWith(preferred) || m === preferred.split(':')[0]);
-            if (found) return found;
-        }
-
-        // Sinon prendre le premier disponible
-        return available[0];
-    }
-    
-    /**
-     * Sélectionne le meilleur modèle avec capacité vision (pour analyse d'images)
-     * Priorité: pixtral-large > pixtral > qwen2-vl > llama3.2-vision
-     */
-    public async selectVisionModel(): Promise<string | null> {
-        const available = await this.listModels();
-        if (available.length === 0) return null;
-        
-        const visionModels = this.modelRegistry.filter(m => m.capabilities.vision);
-        
-        for (const model of visionModels) {
-            const found = available.find(m => m.startsWith(model.name.split(':')[0]));
-            if (found) return found;
-        }
-        
-        return null;
-    }
-    
-    /**
-     * Sélectionne le meilleur modèle avec support long contexte (> 32k tokens)
-     * Priorité: mistral-large > mistral-nemo > deepseek-coder-v2 > qwen2.5:72b
-     */
-    public async selectLongContextModel(): Promise<string | null> {
-        const available = await this.listModels();
-        if (available.length === 0) return null;
-        
-        const longCtxModels = this.modelRegistry.filter(m => m.capabilities.longContext);
-        
-        for (const model of longCtxModels) {
-            const found = available.find(m => m.startsWith(model.name.split(':')[0]));
-            if (found) return found;
-        }
-        
-        return null;
-    }
-    
-    /**
-     * Obtient les informations sur un modèle
-     */
-    public getModelInfo(modelName: string): LLMModelInfo | undefined {
-        return this.modelRegistry.find(m => 
-            modelName.startsWith(m.name.split(':')[0]) || m.name === modelName
-        );
-    }
-    
-    /**
-     * Vérifie si un modèle a une capacité spécifique
-     */
-    public modelHasCapability(modelName: string, capability: keyof ModelCapabilities): boolean {
-        const info = this.getModelInfo(modelName);
-        return !!info?.capabilities[capability];
-    }
-
-    /**
-     * Génère une complétion avec Ollama
-     */
-    public async generateWithOllama(prompt: string, model: string, options?: { temperature?: number; num_predict?: number }): Promise<string> {
-        const config = this.getOllamaConfig();
-        
-        return new Promise((resolve, reject) => {
-            const postData = JSON.stringify({
-                model,
-                prompt,
-                stream: false,
-                options: {
-                    temperature: options?.temperature ?? 0.7,
-                    num_predict: options?.num_predict ?? 4000
-                }
-            });
-
-            const req = http.request(`${config.baseUrl}/api/generate`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Content-Length': Buffer.byteLength(postData)
-                },
-                timeout: config.timeout
-            }, (res) => {
-                let data = '';
-                res.on('data', chunk => data += chunk);
-                res.on('end', () => {
-                    try {
-                        const json: OllamaResponse = JSON.parse(data);
-                        resolve(json.response || '');
-                    } catch (_e) {
-                        reject(new Error('Invalid response from Ollama'));
-                    }
-                });
-            });
-
-            req.on('error', (e) => reject(e));
-            req.on('timeout', () => { req.destroy(); reject(new Error('Timeout')); });
-            req.write(postData);
-            req.end();
-        });
-    }
-    
-    /**
-     * Génère une complétion avec une image (modèle vision requis: pixtral, qwen2-vl, llama3.2-vision)
-     * Utilise l'API multimodal d'Ollama pour envoyer texte + image
-     */
-    public async generateWithVision(prompt: string, imagePath: string, model?: string): Promise<string> {
-        const config = this.getOllamaConfig();
-        
-        // Sélectionner un modèle vision si non spécifié
-        const visionModel = model || await this.selectVisionModel();
-        if (!visionModel) {
-            throw new Error('Aucun modèle vision disponible (pixtral, qwen2-vl, llama3.2-vision). Installez-en un avec: ollama pull pixtral:12b');
-        }
-        
-        // Lire et encoder l'image en base64
-        let imageBase64: string;
-        try {
-            const imageBuffer = fs.readFileSync(imagePath);
-            imageBase64 = imageBuffer.toString('base64');
-        } catch (err) {
-            throw new Error(`Impossible de lire l'image: ${imagePath}`);
-        }
-        
-        return new Promise((resolve, reject) => {
-            const postData = JSON.stringify({
-                model: visionModel,
-                prompt,
-                images: [imageBase64],
-                stream: false,
-                options: {
-                    temperature: 0.5,
-                    num_predict: 2000
-                }
-            });
-
-            const req = http.request(`${config.baseUrl}/api/generate`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Content-Length': Buffer.byteLength(postData)
-                },
-                timeout: config.timeout * 2 // Double timeout pour images
-            }, (res) => {
-                let data = '';
-                res.on('data', chunk => data += chunk);
-                res.on('end', () => {
-                    try {
-                        const json: OllamaResponse = JSON.parse(data);
-                        resolve(json.response || '');
-                    } catch (_e) {
-                        reject(new Error('Invalid response from Ollama Vision'));
-                    }
-                });
-            });
-
-            req.on('error', (e) => reject(e));
-            req.on('timeout', () => { req.destroy(); reject(new Error('Timeout Vision')); });
-            req.write(postData);
-            req.end();
-        });
-    }
+    public async unloadAllModels(): Promise<{ success: boolean; message: string; unloadedCount: number }> { return this.aiClient.unloadAllModels(); }
+    public async getLoadedModels() { return this.aiClient.getLoadedModels(); }
+    public async selectBestModel() { return this.aiClient.selectBestModel(); }
+    public async selectVisionModel() { return this.aiClient.selectVisionModel(); }
+    public async selectLongContextModel() { return this.aiClient.selectLongContextModel(); }
+    public getModelInfo(name: string) { return this.aiClient.getModelInfo(name); }
+    public async generateWithOllama(prompt: string, model: string, options?: any) { return this.aiClient.generate(prompt, model, options); }
+    public async generateWithVision(prompt: string, path: string, model?: string) { return this.aiClient.generateWithVision(prompt, path, model); }
     
     /**
      * Analyse une image (maquette, screenshot, mockup) pour extraire des informations de design
@@ -1301,25 +861,37 @@ Aucun projet actif. Création d'un nouveau projet.`);
         // === ANALYSE PROFONDE: Collecter et lire le code source réel ===
         console.log('[AICompletionService] Starting deep project analysis...');
         
-        // 1. Collecter les fichiers de configuration et documentation importants
+        // 1. Build Graph
+        await this.dependencyGraph.buildGraph();
+
+        // 2. Collecter les fichiers de configuration et documentation importants
         const configFiles = await this.collectImportantConfigFiles();
         console.log(`[AICompletionService] Collected ${configFiles.length} config/doc files`);
         
-        // 2. Collecter les fichiers de code source (augmenté à 50 pour une analyse complète)
+        // 3. Collecter les fichiers de code source (augmenté à 50 pour une analyse complète)
         const projectFiles = await this.collectProjectFiles(50);
         console.log(`[AICompletionService] Collected ${projectFiles.length} source code files`);
         
-        // 3. Générer l'analyse structurelle complète
+        // 4. Générer l'analyse structurelle complète
         const codeAnalysis = this.analyzeCodeStructure(projectFiles);
         
-        // 4. Générer le contexte avec le CODE SOURCE RÉEL et analyse en profondeur
+        // 5. Générer le contexte avec le CODE SOURCE RÉEL et analyse en profondeur
         const realCodeContext = this.buildRealCodeContext(configFiles, projectFiles, codeAnalysis);
         
+        // 6. Enrichir avec le Dependency Graph
+        const entryPoints = projectFiles.filter(f => f.path.includes('index') || f.path.includes('main') || f.path.includes('App'));
+        let architectureContext = '\n### 🏗️ ARCHITECTURE DU PROJET (DÉDUITE DU GRAPHE DE DÉPENDANCE)\n';
+
+        for (const entry of entryPoints.slice(0, 3)) {
+            const deps = this.dependencyGraph.getCluster(entry.path, 2); // Depth 2
+            architectureContext += `- **Point d'entrée:** \`${entry.path}\`\n  - Dépend de: ${deps.slice(0, 5).join(', ')}${deps.length > 5 ? '...' : ''}\n`;
+        }
+
         console.log(`[AICompletionService] Analysis complete: ${codeAnalysis.totalClasses} classes, ${codeAnalysis.totalFunctions} functions, ${codeAnalysis.apiEndpoints.length} endpoints, ${codeAnalysis.detectedPatterns.length} patterns`);
         console.log(`[AICompletionService] Features detected: ${codeAnalysis.implementedFeatures.join(', ')}`);
         
-        // Construire le contexte enrichi avec le code source RÉEL
-        const enrichedContext = this.buildEnrichedContextWithRealCode(currentProject, analysis, realCodeContext, codeAnalysis);
+        // Construire le contexte enrichi avec le code source RÉEL et le Graphe
+        const enrichedContext = this.buildEnrichedContextWithRealCode(currentProject, analysis, realCodeContext + architectureContext, codeAnalysis);
         
         // Log la taille du contexte pour debug
         console.log(`[AICompletionService] Context size: ${enrichedContext.length} characters`);
